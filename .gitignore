@@ -1,0 +1,5 @@
+tools/
+firmware/build/
+.venv/
+__pycache__/
+backup/

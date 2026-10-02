@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- GATT database for the Thunderboard BG22 game/sensor firmware.
+     The binary layout of every custom characteristic is documented in src/tb_protocol.h
+     and mirrored in host/tb_game.py. All multi-byte fields are little-endian. -->
+<project>
+  <gatt generic_attribute_service="true" header="gatt_db.h" name="TB Game GATT" out="gatt_db.c" prefix="gattdb_">
+
+    <service advertise="false" name="Generic Access" requirement="mandatory" sourceId="org.bluetooth.service.generic_access" type="primary" uuid="1800">
+      <characteristic id="device_name" name="Device Name" sourceId="org.bluetooth.characteristic.gap.device_name" uuid="2A00">
+        <value length="20" type="utf-8" variable_length="true">TB-Game</value>
+        <properties read="true" read_requirement="optional" write="true" write_requirement="optional"/>
+      </characteristic>
+      <characteristic name="Appearance" sourceId="org.bluetooth.characteristic.gap.appearance" uuid="2A01">
+        <value length="2" type="hex" variable_length="false">0000</value>
+        <properties const="true" const_requirement="optional" read="true" read_requirement="optional"/>
+      </characteristic>
+    </service>
+
+    <service advertise="false" id="device_information" name="Device Information" requirement="mandatory" sourceId="org.bluetooth.service.device_information" type="primary" uuid="180A">
+      <characteristic id="manufacturer_name_string" name="Manufacturer Name String" sourceId="org.bluetooth.characteristic.manufacturer_name_string" uuid="2A29">
+        <value length="12" type="utf-8" variable_length="false">Silicon Labs</value>
+        <properties const="true" read="true"/>
+      </characteristic>
+      <characteristic id="model_number_string" name="Model Number String" sourceId="org.bluetooth.characteristic.model_number_string" uuid="2A24">
+        <value length="20" type="utf-8" variable_length="true">Thunderboard BG22</value>
+        <properties const="true" read="true"/>
+      </characteristic>
+      <characteristic id="firmware_revision_string" name="Firmware Revision String" sourceId="org.bluetooth.characteristic.firmware_revision_string" uuid="2A26">
+        <value length="8" type="utf-8" variable_length="true">1.0.0</value>
+        <properties const="true" read="true"/>
+      </characteristic>
+    </service>
+
+    <service advertise="true" id="tb_game" name="TB Game" requirement="mandatory" sourceId="custom.type" type="primary" uuid="a7e40000-5c2b-4f1a-9d3e-6b8c0f2e1d47">
+      <!-- Temperature, humidity, light, UV, hall, sound, battery, die temperature -->
+      <characteristic id="tb_env" name="Environment" sourceId="custom.type" uuid="a7e40001-5c2b-4f1a-9d3e-6b8c0f2e1d47">
+        <value length="27" type="hex" variable_length="false"/>
+        <properties notify="true" read="true"/>
+      </characteristic>
+      <!-- Accelerometer, gyroscope, orientation -->
+      <characteristic id="tb_motion" name="Motion" sourceId="custom.type" uuid="a7e40002-5c2b-4f1a-9d3e-6b8c0f2e1d47">
+        <value length="22" type="hex" variable_length="false"/>
+        <properties notify="true" read="true"/>
+      </characteristic>
+      <!-- Push button state and press counter -->
+      <characteristic id="tb_button" name="Button" sourceId="custom.type" uuid="a7e40003-5c2b-4f1a-9d3e-6b8c0f2e1d47">
+        <value length="5" type="hex" variable_length="false"/>
+        <properties notify="true" read="true"/>
+      </characteristic>
+      <!-- LED mode: off / on / blink -->
+      <characteristic id="tb_led" name="LED" sourceId="custom.type" uuid="a7e40004-5c2b-4f1a-9d3e-6b8c0f2e1d47">
+        <value length="5" type="user" variable_length="false"/>
+        <properties read="true" write="true"/>
+      </characteristic>
+      <!-- Persistent configuration (stored in NVM3) -->
+      <characteristic id="tb_config" name="Config" sourceId="custom.type" uuid="a7e40005-5c2b-4f1a-9d3e-6b8c0f2e1d47">
+        <value length="12" type="user" variable_length="false"/>
+        <properties read="true" write="true"/>
+      </characteristic>
+      <!-- Board revision and which sensors exist on it -->
+      <characteristic id="tb_info" name="Info" sourceId="custom.type" uuid="a7e40006-5c2b-4f1a-9d3e-6b8c0f2e1d47">
+        <value length="4" type="user" variable_length="false"/>
+        <properties read="true"/>
+      </characteristic>
+      <!-- One-shot commands: calibrate, reset, reboot, identify -->
+      <characteristic id="tb_command" name="Command" sourceId="custom.type" uuid="a7e40007-5c2b-4f1a-9d3e-6b8c0f2e1d47">
+        <value length="1" type="user" variable_length="false"/>
+        <properties write="true"/>
+      </characteristic>
+      <!-- Persistent device name (UTF-8, 1-20 bytes). Mirrors the GAP Device Name,
+           which BlueZ hides from clients. Advertised after the next disconnect. -->
+      <characteristic id="tb_name" name="Name" sourceId="custom.type" uuid="a7e40008-5c2b-4f1a-9d3e-6b8c0f2e1d47">
+        <value length="20" type="user" variable_length="true"/>
+        <properties read="true" write="true"/>
+      </characteristic>
+    </service>
+
+  </gatt>
+</project>
