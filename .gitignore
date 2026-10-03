@@ -3,3 +3,4 @@ firmware/build/
 .venv/
 __pycache__/
 backup/
+*.egg-info/

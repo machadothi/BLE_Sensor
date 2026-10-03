@@ -1,13 +1,13 @@
-project_name: tb_game_brd4184a
-label: TB Game - Thunderboard EFR32BG22 (BRD4184A)
+project_name: ble_sensor_brd4184b
+label: BLE Sensor - Thunderboard EFR32BG22 (BRD4184B)
 description: >
   Exposes all Thunderboard BG22 sensors over BLE, LED control and persistent
-  configuration. BRD4184A: Si1133 light + UV sensor, no microphone.
+  configuration. BRD4184B: VEML6035 light sensor and PDM microphone.
 category: Bluetooth Examples
 quality: experimental
 
 component:
-  - id: brd4184a
+  - id: brd4184b
   - id: bluetooth_stack
   - id: gatt_configuration
   - id: bluetooth_feature_gap
@@ -24,9 +24,10 @@ component:
   - id: nvm3_default
   - id: power_supply
   - id: sensor_rht
-  - id: sensor_light
+  - id: sensor_lux
   - id: si7210_driver
   - id: imu_driver
+  - id: mic_driver
   - id: i2cspm
     instance:
       - sensor
@@ -40,17 +41,41 @@ component:
   - id: clock_manager
   - id: device_init
 
+# Our sources. Headers are included relative to src/, e.g. "ble/gatt_service.h".
 source:
   - path: src/app.c
-  - path: src/sensors.c
-  - path: src/settings.c
+  - path: src/sampling.c
+  - path: src/ble/advertising.c
+  - path: src/ble/device_name.c
+  - path: src/ble/gatt_service.c
+  - path: src/control/button.c
+  - path: src/control/commands.c
+  - path: src/control/led.c
+  - path: src/sensors/env_sensors.c
+  - path: src/sensors/imu.c
+  - path: src/sensors/sensors.c
+  - path: src/sensors/sound.c
+  - path: src/storage/settings.c
 
 include:
   - path: src
     file_list:
-      - path: sensors.h
-      - path: settings.h
-      - path: tb_protocol.h
+      - path: app.h
+      - path: app_config.h
+      - path: sampling.h
+      - path: uptime.h
+      - path: ble/advertising.h
+      - path: ble/ble_protocol.h
+      - path: ble/device_name.h
+      - path: ble/gatt_service.h
+      - path: control/button.h
+      - path: control/commands.h
+      - path: control/led.h
+      - path: sensors/env_sensors.h
+      - path: sensors/imu.h
+      - path: sensors/sensors.h
+      - path: sensors/sound.h
+      - path: storage/settings.h
 
 config_file:
   - override:

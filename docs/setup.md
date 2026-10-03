@@ -27,7 +27,7 @@ else on the system changes, and deleting the folder removes everything.
 | **Temurin JDK** | 21 (≥ 17 works) | slc is a Java program. Used only to run slc; nothing on the board uses Java. | 0.35 GB |
 | **Arm GNU Toolchain** (`arm-none-eabi-gcc`) | 12.2.Rel1 | Compiler and linker for the Cortex-M33 in the EFR32BG22. The SDK README states it supports exactly **12.2.Rel1**; Ubuntu 22.04's packaged `gcc-arm-none-eabi` is 10.3, older than that. | 1.1 GB |
 | **Simplicity Commander** (CLI) | 1v25p0b1995 | Flashes the `.hex`, reads/erases flash, identifies the kit. It talks to the board's on-board **J-Link** debugger and bundles SEGGER's J-Link library, so no separate SEGGER install is needed. | 90 MB |
-| **bleak** (Python) | 3.0.x | Cross-platform Bluetooth LE library used by `host/tb_game.py`. On Linux it talks to BlueZ over D-Bus. | small |
+| **bleak** (Python) | 3.0.x | Cross-platform Bluetooth LE library used by the `host/ble_sensor` package. On Linux it talks to BlueZ over D-Bus. | small |
 | **pyserial** (Python) | ≥ 3.5 | Only for `make log` (reading the board's UART log). | small |
 
 System prerequisites (Ubuntu packages, normally already present): `wget`,
@@ -132,8 +132,8 @@ Also make sure your user is in `dialout` (`id -nG`). If not, run
 ```sh
 cd ~/git/BLE_Sensor
 python3 -m venv .venv
-.venv/bin/pip install -r host/requirements.txt
-alias tb="$PWD/.venv/bin/python $PWD/host/tb_game.py"   # put this in ~/.zshrc
+.venv/bin/pip install -e host     # installs bleak, pyserial and the ble-sensor command
+export PATH="$PWD/.venv/bin:$PATH"   # or put this line in ~/.zshrc
 ```
 
 ## 5. Identify the board and back up its flash
@@ -176,24 +176,24 @@ While `make log` runs, reset the board from a second terminal with
 You should see:
 
 ```
-[I] TB Game firmware, protocol v1
+[I] BLE Sensor firmware 1.0.0, protocol v1
 [I] Sensors available: 0x2F
-[I] Advertising as "TB-Game-B0DF"
+[I] Advertising as "BLE-Sensor-B0DF"
 ```
 
-`0x2F` = RHT + light + hall + IMU + battery (bit meanings in
+`0x2F` = RHT + light + hall + IMU + supply (bit meanings in
 [capabilities.md](capabilities.md#sensor-bits)). Then, from another terminal:
 
 ```sh
-tb scan        # 58:8E:81:66:B0:DF  -70 dBm  BRD4184A  TB-Game-B0DF
-tb read
+ble-sensor scan    # 58:8E:81:66:B0:DF  -70 dBm  BRD4184A  BLE-Sensor-B0DF
+ble-sensor read
 ```
 
 All Makefile targets:
 
 | Target | What it does |
 |---|---|
-| `make` / `make all` | generate (if needed) + compile → `build/<board>/build/debug/tb_game_<board>.hex` |
+| `make` / `make all` | generate (if needed) + compile → `build/<board>/build/debug/ble_sensor_<board>.hex` |
 | `make generate` | only run slc |
 | `make flash` | build + flash via Commander |
 | `make erase` | mass-erase the chip (wipes config **and** any bootloader) |
@@ -228,6 +228,6 @@ Vendors move, rename or gate downloads. Protect yourself once:
    - JDK: any 64-bit Java ≥ 17 (Ubuntu `openjdk-17-jre-headless` works).
    - Flashing without Commander: SEGGER's J-Link Software (`JLinkExe -device
      EFR32BG22C224F512IM40 -if SWD -speed 4000`, then `loadfile
-     tb_game_brd4184a.hex`, `r`, `g`).
+     ble_sensor_brd4184a.hex`, `r`, `g`).
    - slc and Commander exist only on silabs.com and inside Simplicity Studio,
      which is why archiving them matters most.

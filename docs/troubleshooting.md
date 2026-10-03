@@ -43,14 +43,14 @@ not `curl` (see [setup.md](setup.md#2-download-the-toolchain-into-tools)).
 
 ## Bluetooth
 
-**`No TB Game board found`**
+**`No BLE Sensor board found`**
 1. Is it advertising? Run `make log` (or a read-only serial terminal) and look
    for `Advertising as ...` after a reset. If the log ends with an error
    message instead, note it, then reset or reflash.
 2. Is another computer or phone connected to it? Only one connection at a
    time; the board does not advertise while connected.
 3. Is your Bluetooth on? `bluetoothctl show` should report `Powered: yes`.
-4. Raw check: `bluetoothctl --timeout 10 scan le | grep TB-Game`.
+4. Raw check: `bluetoothctl --timeout 10 scan le | grep BLE-Sensor`.
 
 **Connected, but old characteristics / `Characteristic ... was not found`**:
 BlueZ cached the old GATT layout. Run `bluetoothctl remove <address>`.

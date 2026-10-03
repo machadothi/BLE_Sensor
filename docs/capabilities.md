@@ -1,7 +1,7 @@
 # Capabilities and configuration reference
 
 Everything the board exposes over Bluetooth, and every setting. The
-authoritative definitions are in [`firmware/src/tb_protocol.h`](../firmware/src/tb_protocol.h).
+authoritative definitions are in [`firmware/src/ble/ble_protocol.h`](../firmware/src/ble/ble_protocol.h).
 
 - [Hardware](#hardware)
 - [What you can read](#what-you-can-read)
@@ -65,13 +65,13 @@ Measured on BRD4184A: motion arrives at **104.5 / 52.5 / 20.7 Hz** with a
 
 | Action | How (CLI) | Effect |
 |---|---|---|
-| LED off / on | `tb led off`, `tb led on` | immediate |
-| LED blink | `tb led blink --on-ms 100 --off-ms 900` | each time ≥ 10 ms |
-| Identify | `tb identify` | fast blink (100/100 ms) for 3 s, then back to the LED mode |
-| Gyro calibration | `tb calibrate` | measures gyro bias; **keep the board still** (blocks ~1 s) |
-| Zero orientation | `tb reset-orientation` | roll/pitch/yaw restart from 0 |
-| Factory reset | `tb factory-reset` | default config + default name (stored) |
-| Reboot | `tb reboot` | restarts after 200 ms |
+| LED off / on | `ble-sensor led off`, `ble-sensor led on` | immediate |
+| LED blink | `ble-sensor led blink --on-ms 100 --off-ms 900` | each time ≥ 10 ms |
+| Identify | `ble-sensor identify` | fast blink (100/100 ms) for 3 s, then back to the LED mode |
+| Gyro calibration | `ble-sensor calibrate` | measures gyro bias; **keep the board still** (blocks ~1 s) |
+| Zero orientation | `ble-sensor reset-orientation` | roll/pitch/yaw restart from 0 |
+| Factory reset | `ble-sensor factory-reset` | default config + default name (stored) |
+| Reboot | `ble-sensor reboot` | restarts after 200 ms |
 
 The LED state is not stored; it is off after every reboot.
 
@@ -83,13 +83,13 @@ changes.
 
 | Setting | CLI option | Range | Default | Takes effect |
 |---|---|---|---|---|
-| Sensor mask | `--sensors rht,light,hall,imu,sound,battery` or `none` | any combination | all | immediately |
+| Sensor mask | `--sensors rht,light,hall,imu,sound,supply` or `none` | any combination | all | immediately |
 | Environment period | `--env-period` (ms) | 100 – 60000 | 1000 | immediately |
 | Motion period | `--motion-period` (ms) | 10 – 1000 | 50 | immediately (IMU restarts) |
 | TX power | `--tx-power` (dBm, 0.1 steps) | −30 – +6 | 0 | **after disconnect** (next advertising) |
 | Advertising interval | `--adv-interval` (ms) | 20 – 10240 | 100 | **after disconnect** |
 | Hall alert threshold | `--hall-threshold` (mT) | 0.1 – 20 | 3.0 | immediately (0.5 mT hysteresis) |
-| Device name | `tb name <name>` | 1 – 20 bytes UTF-8 | `TB-Game-XXXX` (last 2 address bytes) | **advertised after disconnect** |
+| Device name | `ble-sensor name <name>` | 1 – 20 bytes UTF-8 | `BLE-Sensor-XXXX` (last 2 address bytes) | **advertised after disconnect** |
 
 Notes:
 
@@ -169,7 +169,7 @@ Valid bits: 0 temperature, 1 humidity, 2 lux, 3 UV, 4 hall, 5 sound,
 | 10 | u16 | hall threshold, µT |
 
 <a id="sensor-bits"></a>Sensor bits (used by both Config and Info): 0 RHT,
-1 light, 2 hall, 3 IMU, 4 sound, 5 battery/supply. The UART line
+1 light, 2 hall, 3 IMU, 4 sound, 5 supply voltage. The UART line
 `Sensors available: 0x2F` means bits 0, 1, 2, 3, 5.
 
 ### Info (4 bytes)

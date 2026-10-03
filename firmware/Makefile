@@ -1,4 +1,4 @@
-# Thunderboard BG22 "TB Game" firmware.
+# BLE Sensor firmware for the Thunderboard EFR32BG22.
 #
 #   make                      build for BOARD (default brd4184a)
 #   make flash                build and flash over the on-board J-Link
@@ -9,7 +9,7 @@
 # Toolchain (SDK, slc, GCC, JDK, Commander) lives in ../tools.
 
 BOARD     ?= brd4184a
-PROJECT   := tb_game_$(BOARD)
+PROJECT   := ble_sensor_$(BOARD)
 TOOLS     := $(abspath ../tools)
 SDK       := $(TOOLS)/simplicity_sdk
 BUILD_DIR := build/$(BOARD)

@@ -2,7 +2,8 @@
 
 - [Build pipeline](#build-pipeline)
 - [Where is main()?](#where-is-main)
-- [Source files](#source-files)
+- [Source layout](#source-layout)
+- [Project configuration: app_config.h](#project-configuration-app_configh)
 - [Runtime behaviour](#runtime-behaviour)
 - [Design decisions and why](#design-decisions-and-why)
 - [Common changes](#common-changes)
@@ -12,14 +13,14 @@
 ## Build pipeline
 
 ```
-firmware/tb_game_brd4184a.slcp ─┐      (project: components + our sources + settings)
+firmware/ble_sensor_brd4184a.slcp ┐      (project: components + our sources + settings)
 firmware/config/btconf/*.btconf ┼─► slc generate ──► firmware/build/brd4184a/
 tools/simplicity_sdk ───────────┘                      ├── main.c                (from SDK template)
                                                        ├── autogen/              (init calls, gatt_db.c/.h,
                                                        │                          linkerfile.ld, instances)
                                                        ├── config/               (per-component config headers)
-                                                       └── tb_game_brd4184a.Makefile
-                                    make ──► arm-none-eabi-gcc ──► build/debug/tb_game_brd4184a.hex
+                                                       └── ble_sensor_brd4184a.Makefile
+                                    make ──► arm-none-eabi-gcc ──► build/debug/ble_sensor_brd4184a.hex
                                     Commander ──► J-Link ──► EFR32BG22 flash
 ```
 
@@ -39,7 +40,8 @@ tools/simplicity_sdk ───────────┘                      �
 There are **two `.slcp` files** because the board revisions differ in hardware:
 `brd4184a` uses `sensor_light` (Si1133, lux + UV); `brd4184b` uses `sensor_lux`
 (VEML6035) and adds `mic_driver`. The C code adapts with
-`#ifdef SL_CATALOG_<COMPONENT>_PRESENT`; slc writes those defines into
+`#ifdef SL_CATALOG_<COMPONENT>_PRESENT` (in `src/sensors/env_sensors.c`,
+`src/sensors/sound.c` and `sensors_board_id()`); slc writes those defines into
 `autogen/sl_component_catalog.h`.
 
 `build/` is disposable and git-ignored. The Makefile deletes and regenerates it
@@ -79,9 +81,9 @@ What the SDK does around our hooks:
 2. **`app_init()`** (ours) probes and initializes the sensors.
 3. **`sl_main_process_action()`** each loop pass runs app timers that are due
    (our timer callbacks run here, *not* in an interrupt) and `sl_bt_step()`.
-   That one delivers queued Bluetooth events to **`sl_bt_on_event()`** (ours).
-   The SDK provides a weak default in `autogen/sl_bluetooth.c`, and our
-   definition in `app.c` replaces it.
+   That one delivers queued Bluetooth events to **`sl_bt_on_event()`** (ours,
+   in `src/app.c`). The SDK provides a weak default in `autogen/sl_bluetooth.c`,
+   and our definition replaces it.
 4. **`app_process_action()`** (ours) feeds the microphone level filter on B.
 5. **`sl_power_manager_sleep()`** puts the CPU to sleep. Interrupts (radio,
    timers, button) wake it.
@@ -89,17 +91,52 @@ What the SDK does around our hooks:
 So the application is purely **event-driven**: everything happens in
 `sl_bt_on_event()` and in app-timer callbacks.
 
-## Source files
+## Source layout
 
-| File | Role |
+`src/app.c` only decides **which module handles what**. Read it first: about
+130 lines that map every Bluetooth event to a module.
+
+| Path | Owns |
 |---|---|
-| `src/tb_protocol.h` | **Single source of truth** for the BLE byte layouts, sensor bits, limits and command codes. `host/tb_game.py` mirrors it. |
-| `src/app.c` | The application: `app_init`, `sl_bt_on_event` (boot, connect/disconnect, MTU, CCCD changes, user reads/writes), advertising, sampling timers, LED modes, button debounce, commands, config apply. |
-| `src/sensors.c/.h` | All sensor access: init/probe, enable mask, pipelined Si7021 and Si1133 conversions, Si7210 hall + threshold, IMU start/stop/rate/calibration, microphone (B), supply voltage, die temperature. |
-| `src/settings.c/.h` | Config + device name in **NVM3** (keys `0x01001` config, `0x01002` name; the BLE stack uses `0x40000–0x4FFFF`), defaults, validation. |
-| `config/btconf/gatt_configuration.btconf` | GATT database (XML). slc turns it into `autogen/gatt_db.c/.h`, which gives `gattdb_tb_env` and the other handles. |
-| `tb_game_brd4184{a,b}.slcp` | Project definitions (see above). |
-| `Makefile` | Wraps slc, make and Commander with this repo's `tools/`. |
+| `src/app.c` / `app.h` | `app_init`, `app_process_action`, `sl_bt_on_event` dispatch, `app_apply_config()` (pushes a new config to sensors and timers) |
+| `src/app_config.h` | **every tunable value**, see the next section |
+| `src/sampling.c` | the env and motion timers: first sample after connect, period changes |
+| `src/uptime.h` | milliseconds since boot (packet timestamps) |
+| `src/ble/ble_protocol.h` | **the wire contract**: service UUID, packed structs, sensor/valid bits, limits, command codes, size checks. `host/ble_sensor/protocol.py` mirrors it. |
+| `src/ble/advertising.c` | advertising and scan-response packets, TX power, interval |
+| `src/ble/gatt_service.c` | connection handle, subscriptions, notifications (`gatt_service_publish_*`), one read/write handler per characteristic, ATT errors |
+| `src/ble/device_name.c` | the name: stored or default, GAP and custom characteristic kept in sync |
+| `src/control/led.c` | off/on/blink and the identify overlay |
+| `src/control/button.c` | the GPIO interrupt → external signal → 25 ms debounce → publish |
+| `src/control/commands.c` | calibrate, factory reset, reboot, identify, zero orientation |
+| `src/sensors/sensors.c` | **the only sensor interface the rest uses**: available/enabled masks, board id, building Env packets |
+| `src/sensors/env_sensors.c` | Si7021, Si1133/VEML6035, Si7210, supply voltage, die temperature; non-blocking conversions |
+| `src/sensors/imu.c` | ICM-20648 power, rate, samples, calibration |
+| `src/sensors/sound.c` | microphone level (BRD4184B; stubs elsewhere) |
+| `src/storage/settings.c` | the live config + NVM3 load/save/validate/factory reset |
+| `config/btconf/gatt_configuration.btconf` | GATT database (XML). `id="env"` becomes the handle `gattdb_env` in the generated `gatt_db.h`. |
+| `ble_sensor_brd4184{a,b}.slcp` | project definitions (see above); list every `.c` file under `source:` |
+| `Makefile` | wraps slc, make and Commander with this repo's `tools/` |
+
+Headers are included relative to `src/` (e.g. `#include "ble/gatt_service.h"`),
+so the path says where a file lives.
+
+Who calls whom:
+
+| Module | Calls into |
+|---|---|
+| `app.c` | everything below except `control/led`, `control/commands` |
+| `sampling` | `sensors`, `gatt_service` (publish), `settings` |
+| `ble/gatt_service` | `led`, `commands`, `device_name`, `sensors`, `settings`, `app_apply_config()` |
+| `ble/advertising` | `device_name`, `sensors` (board id), `settings` |
+| `control/button` | `gatt_service` (publish) |
+| `control/commands` | `led`, `device_name`, `sensors`, `settings`, `app_apply_config()` |
+| `ble/device_name` | `settings` |
+| `sensors/sensors` | only `env_sensors`, `imu`, `sound` |
+| `storage/settings` | only NVM3 |
+
+The sensor and storage modules know nothing about Bluetooth, so they can be
+reused or tested on their own.
 
 SDK code worth knowing (all under `tools/simplicity_sdk/`):
 
@@ -111,6 +148,35 @@ SDK code worth knowing (all under `tools/simplicity_sdk/`):
 | `hardware/board/config/brd4184a/` | Pin assignments for this board |
 | `protocol/bluetooth/inc/sl_bt_api.h` | Full Bluetooth API reference (`sl_bt_*`) |
 
+## Project configuration: app_config.h
+
+[`src/app_config.h`](../firmware/src/app_config.h) holds every value you might
+want to tune. Each name carries its unit, and each value has a short note on
+why it is what it is. Change it and run `make flash`.
+
+| Section | Examples |
+|---|---|
+| Firmware identity | `FIRMWARE_VERSION` |
+| Factory defaults | `DEFAULT_ENV_PERIOD_MS`, `DEFAULT_MOTION_PERIOD_MS`, `DEFAULT_TX_POWER_DBM_X10`, `DEFAULT_NAME_PREFIX`, LED blink times |
+| Timing | `ENV_FIRST_SAMPLE_DELAY_MS`, `BUTTON_DEBOUNCE_MS`, `IDENTIFY_DURATION_MS`, `REBOOT_DELAY_MS`, `LED_BLINK_MIN_MS` |
+| Bluetooth link | `CONN_INTERVAL_MIN/MAX`, `CONN_SUPERVISION_TIMEOUT`, `ADV_COMPANY_ID` |
+| Sensors | hall range/hysteresis, Si7021/Si1133 conversion times, power-up delays, microphone rate/buffer/smoothing, supply averaging |
+| Storage | NVM3 keys |
+
+What is deliberately **not** in it:
+
+- **Wire-protocol values** (UUIDs, layouts, the allowed ranges `LIMIT_*`,
+  command codes) are in `src/ble/ble_protocol.h`, because the Python client
+  must match them.
+- **Fixed standards** (ATT error codes, advertising AD types) sit as named
+  constants in the one file that uses them.
+- **SDK and board settings** (pins, stack size, VCOM) go in the `.slcp` files
+  under `configuration:`.
+
+Changing a factory default affects new boards, boards after a factory reset,
+and boards whose stored config is invalid. A board with a saved config keeps
+it: run `ble-sensor factory-reset` to pick up the new defaults.
+
 ## Runtime behaviour
 
 ```
@@ -120,7 +186,7 @@ boot ─► load config + name from NVM3 ─► advertise (name, service UUID, m
             │         enable sensors per sensor_mask
             │         start env timer (first sample after 250 ms) + motion timer
             │
-   every env_period ─► read RHT/light/hall/battery/die temp ─► store in GATT DB,
+   every env_period ─► read RHT/light/hall/supply/die temp ─► store in GATT DB,
             │           notify if the client subscribed
    every motion_period/2 ─► if IMU has a new sample ─► store + notify
    button edge ─► ISR ─► sl_bt_external_signal ─► 25 ms debounce ─► store + notify
@@ -142,20 +208,20 @@ MTU, config changes and errors.
   enable pins and are really switched off.
 - **Pipelined slow sensors.** The SDK's blocking calls wait about 210 ms for
   the Si1133 and about 17 ms for the Si7021 (measured). That stalled the main
-  loop, and IMU samples were lost. `sensors.c` starts a conversion on one env
-  tick and collects it on the next, so light and RHT values are up to one env
-  period old.
+  loop, and IMU samples were lost. `sensors/env_sensors.c` starts a conversion
+  on one env tick and collects it on the next, so light and RHT values are up
+  to one env period old.
 - **Motion polled at half the period.** The ICM-20648 produces one sample per
   period; polling at the same rate missed samples because of timer jitter.
   Only new samples are sent.
 - **Button via external signal.** `sl_button_on_change()` runs in interrupt
   context, where Bluetooth API calls are not allowed. It only calls
   `sl_bt_external_signal()`. The event arrives in `sl_bt_on_event()`, which
-  starts a 25 ms debounce timer; the contacts bounce, and one press used to
-  count twice.
+  calls `button_on_signal()` to start a 25 ms debounce timer; the contacts
+  bounce, and one press used to count twice.
 - **TX power and advertising interval apply after disconnect.** The stack
   rejects TX power changes while connected or advertising, so both are applied
-  in `advertising_start()`.
+  in `advertising_start()` (`src/ble/advertising.c`).
 - **Manufacturer data in advertising** (`0x02FF` = Silicon Labs, board id,
   protocol version). It lets scanners identify the board revision, and it makes
   BlueZ report every advertisement (see [host-client.md](host-client.md#bluez-quirks)).
@@ -170,11 +236,24 @@ MTU, config changes and errors.
 
 ## Common changes
 
-**Add a characteristic.** Add it to `config/btconf/gatt_configuration.btconf`
-(`type="user"` if the app should answer reads and writes itself), add its
-struct to `src/tb_protocol.h`, and handle `gattdb_<id>` in `handle_user_read`
-or `handle_user_write` in `app.c`. Mirror the layout in `host/tb_game.py`. The
-Makefile regenerates automatically.
+**Tune a value.** Edit `src/app_config.h` and run `make flash`.
+
+**Add a characteristic.**
+1. Add it to `config/btconf/gatt_configuration.btconf` with an `id`. Use
+   `type="user"` if the app should answer reads and writes itself.
+2. Add its struct to `src/ble/ble_protocol.h`, with a `_Static_assert` on its size.
+3. Handle `gattdb_<id>` in `gatt_service_on_read_request()` or
+   `gatt_service_on_write_request()` in `src/ble/gatt_service.c`. For writes,
+   add a small `write_<name>()` handler like the existing ones.
+4. Mirror the layout in `host/ble_sensor/protocol.py` and add a method to
+   `host/ble_sensor/client.py`.
+
+The Makefile regenerates the GATT database automatically.
+
+**Add a sensor.** Add its SDK component to **both** `.slcp` files, read it in
+`src/sensors/env_sensors.c` (or a new file under `src/sensors/`, also listed
+under `source:` in both `.slcp` files), give it a `SENSOR_BIT_*` and an Env
+field in `ble_protocol.h`, and mirror both in `protocol.py`.
 
 **Add an SDK component.** Add `- id: <component>` to **both** `.slcp` files.
 Component IDs are listed in the `*.slcc` files under
@@ -184,6 +263,7 @@ Component IDs are listed in the `*.slcc` files under
 `build/<board>/config/`, but they are recreated on every regeneration.
 Override values in the `configuration:` list of the `.slcp` instead.
 
-**Change the protocol.** Bump `TB_PROTOCOL_VERSION` in `tb_protocol.h`. The
-`_Static_assert`s there catch any struct whose size no longer matches the GATT
+**Change the protocol.** Bump `BLE_SENSOR_PROTOCOL_VERSION` in
+`src/ble/ble_protocol.h` and `PROTOCOL_VERSION` in `host/ble_sensor/protocol.py`.
+The `_Static_assert`s catch any struct whose size no longer matches the GATT
 length.

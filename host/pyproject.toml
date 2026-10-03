@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ble-sensor"
+version = "1.0.0"
+description = "Bluetooth client for the BLE Sensor firmware on the Thunderboard EFR32BG22"
+requires-python = ">=3.10"
+dependencies = [
+    "bleak>=0.22",
+    "pyserial>=3.5",   # only for `make log` in firmware/
+]
+
+[project.scripts]
+ble-sensor = "ble_sensor.cli:main"
+
+[tool.setuptools]
+packages = ["ble_sensor"]
