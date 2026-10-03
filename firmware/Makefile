@@ -11,6 +11,7 @@
 BOARD     ?= brd4184a
 PROJECT   := tb_game_$(BOARD)
 TOOLS     := $(abspath ../tools)
+SDK       := $(TOOLS)/simplicity_sdk
 BUILD_DIR := build/$(BOARD)
 HEX       := $(BUILD_DIR)/build/debug/$(PROJECT).hex
 SLC       := PATH="$(TOOLS)/jdk/bin:$$PATH" $(TOOLS)/slc_cli/slc
@@ -29,9 +30,13 @@ all: $(HEX)
 
 # slc never overwrites config files already in the output directory, so
 # regenerate from scratch whenever the project or GATT database changes.
+# --sdk pins this checkout's own SDK; otherwise slc uses whatever SDK the
+# per-user ~/.uc/cli/cli.config points at. "signature trust" is a one-time,
+# idempotent step slc requires for each SDK path.
 $(BUILD_DIR)/$(PROJECT).Makefile: $(PROJECT).slcp config/btconf/gatt_configuration.btconf
 	rm -rf $(BUILD_DIR)
-	$(SLC) generate -p $(PROJECT).slcp -d $(BUILD_DIR) -o makefile --with $(BOARD)
+	$(SLC) signature trust --sdk $(SDK)
+	$(SLC) generate --sdk $(SDK) -p $(PROJECT).slcp -d $(BUILD_DIR) -o makefile --with $(BOARD)
 
 generate: $(BUILD_DIR)/$(PROJECT).Makefile
 
