@@ -247,6 +247,8 @@ MTU, config changes and errors.
    add a small `write_<name>()` handler like the existing ones.
 4. Mirror the layout in `host/ble_sensor/protocol.py` and add a method to
    `host/ble_sensor/client.py`.
+5. Do the same in the phone app: `android/.../ble/Protocol.kt`
+   (see [android-app.md](android-app.md#adding-something-to-the-app)).
 
 The Makefile regenerates the GATT database automatically.
 

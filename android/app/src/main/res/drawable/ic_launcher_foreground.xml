@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+
+    <!-- Chip pins (left/right) -->
+    <path android:strokeColor="#FF8C9AB8" android:strokeWidth="2.2" android:strokeLineCap="round"
+        android:pathData="M37,50h-4M37,56h-4M37,62h-4M65,50h4M65,56h4M65,62h4M45,70v4M51,70v4M57,70v4" />
+    <!-- Chip body -->
+    <path android:fillColor="#FF0B1222" android:strokeColor="#FF2EE6C5" android:strokeWidth="2.4"
+        android:pathData="M41,42h16a6,6 0,0 1,6 6v16a6,6 0,0 1,-6 6h-16a6,6 0,0 1,-6 -6v-16a6,6 0,0 1,6 -6z" />
+    <!-- Die -->
+    <path android:fillColor="#FF2EE6C5" android:pathData="M45,50h8a2,2 0,0 1,2 2v8a2,2 0,0 1,-2 2h-8a2,2 0,0 1,-2 -2v-8a2,2 0,0 1,2 -2z" />
+    <!-- Signal arcs, top right -->
+    <path android:strokeColor="#FFFFB547" android:strokeWidth="2.6" android:strokeLineCap="round"
+        android:pathData="M64,40a8,8 0,0 1,8 8" />
+    <path android:strokeColor="#FFFFB547" android:strokeWidth="2.6" android:strokeLineCap="round"
+        android:pathData="M64,33a15,15 0,0 1,15 15" />
+    <path android:strokeColor="#FFFFB547" android:strokeWidth="2.6" android:strokeLineCap="round"
+        android:pathData="M64,26a22,22 0,0 1,22 22" />
+
+</vector>

@@ -10,6 +10,7 @@ EFR32BG22** (BRD4184A; also builds for BRD4184B). Over Bluetooth LE you can:
   identify, factory reset, reboot)
 - **configure** sample rates, active sensors, TX power, advertising interval,
   hall threshold and device name, all stored on the board
+- do all of it from a **phone app** (`android/`) or the `ble-sensor` command
 
 ## Quick start
 
@@ -29,6 +30,7 @@ cd .. && python3 -m venv .venv && .venv/bin/pip install -e host
 | [docs/setup.md](docs/setup.md) | set everything up from scratch: what each tool is for, versions, download links, udev, backup, first flash, what to do if a download disappears |
 | [docs/capabilities.md](docs/capabilities.md) | know what the board measures, what you can control and configure (ranges, defaults), and the exact BLE byte layouts |
 | [docs/host-client.md](docs/host-client.md) | use the `ble-sensor` command, or the `BleSensor` class from your own Python code / game |
+| [docs/android-app.md](docs/android-app.md) | build and install the phone app, or change it: screens, code map |
 | [docs/firmware.md](docs/firmware.md) | understand or change the firmware: build pipeline, **where `main()` is**, module map, **`app_config.h`** (all tunables), design decisions |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | fix something that doesn't work |
 
@@ -49,6 +51,7 @@ BLE_Sensor/
 │   ├── ble_sensor_brd4184{a,b}.slcp  project definitions for slc
 │   ├── Makefile                 make / make flash / make log
 │   └── build/                   generated (git-ignored)
+├── android/                     phone app (Compose): scan, live values, 3D motion, charts, control, settings
 ├── host/
 │   ├── pyproject.toml           `pip install -e host` → `ble-sensor` command
 │   └── ble_sensor/              Python package: protocol, discovery, client, cli
