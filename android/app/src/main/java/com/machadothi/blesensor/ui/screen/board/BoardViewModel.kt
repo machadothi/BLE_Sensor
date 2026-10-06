@@ -66,6 +66,8 @@ class BoardViewModel @Inject constructor(
 
     fun setDisplayPageMs(pageMs: Int) = updateDisplay { it.copy(pageMs = pageMs) }
 
+    fun setDisplayRotated(rotated: Boolean) = updateDisplay { it.copy(rotated = rotated) }
+
     private fun updateDisplay(change: (DisplayState) -> DisplayState) {
         val current = display.value ?: return
         run("Display updated", quiet = true) { repository.setDisplay(change(current)) }

@@ -140,4 +140,16 @@ class ProtocolTest {
         assertEquals(14.6f, Derived.dewPoint(26.69f, 47.57f)!!, 0.1f)
         assertEquals(12.0f, Derived.absoluteHumidity(26.69f, 47.57f)!!, 0.1f)
     }
+
+    // Thunderboard: 5 bytes, no rotation. ESP32 Air: a 6th byte, bit 0 = rotated 180°.
+    @Test
+    fun displayRotation() {
+        val thunderboard = DisplayState.decode(hex("010303ac0d"))
+        assertEquals(null, thunderboard.rotated)
+        assertEquals(5, thunderboard.encode().size)
+
+        val esp32 = DisplayState.decode(hex("01031c881301"))
+        assertEquals(true, esp32.rotated)
+        assertArrayEquals(hex("01031c881300"), esp32.copy(rotated = false).encode())
+    }
 }

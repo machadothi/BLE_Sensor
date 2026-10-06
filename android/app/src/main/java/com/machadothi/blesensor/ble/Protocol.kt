@@ -99,11 +99,17 @@ enum class DisplayPage(val label: String) {
 }
 
 /** The optional OLED display: whether one is connected, what it shows, for how long each. */
-data class DisplayState(val present: Boolean, val pages: Set<DisplayPage>, val pageMs: Int) {
-    fun encode(): ByteArray = le(ByteArray(5)).apply {
+/**
+ * The optional OLED display: whether one is connected, what it shows, for how long each.
+ * [rotated]: turned 180°; null when the board can't rotate it from the app
+ * (5-byte value, the Thunderboard). Boards that can send a 6th byte: flags, bit 0 = rotated.
+ */
+data class DisplayState(val present: Boolean, val pages: Set<DisplayPage>, val pageMs: Int, val rotated: Boolean? = null) {
+    fun encode(): ByteArray = le(ByteArray(if (rotated == null) 5 else 6)).apply {
         put(if (present) 1 else 0)
         putShort(pages.fold(0) { mask, page -> mask or page.bit }.toShort())
         putShort(pageMs.toShort())
+        if (rotated != null) put(if (rotated) 1 else 0)
     }.array()
 
     companion object {
@@ -112,7 +118,8 @@ data class DisplayState(val present: Boolean, val pages: Set<DisplayPage>, val p
             val present = b.u8() != 0
             val mask = b.u16()
             val pageMs = b.u16()
-            return DisplayState(present, DisplayPage.entries.filter { mask and it.bit != 0 }.toSet(), pageMs)
+            val rotated = if (bytes.size >= 6) b.u8() and 1 != 0 else null
+            return DisplayState(present, DisplayPage.entries.filter { mask and it.bit != 0 }.toSet(), pageMs, rotated)
         }
     }
 }

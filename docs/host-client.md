@@ -67,7 +67,7 @@ ble-sensor -a 58:8E:81:66:B0:DF led on
 
 **ESP32 Air boards** (see [capabilities.md](capabilities.md#other-boards-esp32-air))
 work with `scan`, `info`, `read` (adds AQI, eCO2, TVOC, ENS160 details and the board's status), `monitor env`,
-`name`, `display` (`--pages all` means that board's eight pages), `identify`,
+`name`, `display` (`--pages all` means that board's eight pages; `--rotate on|off` turns its display 180°), `identify`,
 `reboot` and `factory-reset`. They have no LED, config, motion or button.
 
 `ble-sensor config --help` shows each option's allowed range. An out-of-range

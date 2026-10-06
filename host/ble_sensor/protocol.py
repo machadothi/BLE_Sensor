@@ -252,18 +252,22 @@ class Display:
     present: bool
     pages: list[str]      # names from DISPLAY_PAGES
     page_time_s: float    # seconds per reading, DISPLAY_PAGE_TIME_S
+    rotated: Optional[bool] = None   # turned 180°; None if the board can't (Thunderboard)
 
-    # present (ignored on write), page mask, milliseconds per reading
+    # present (ignored on write), page mask, milliseconds per reading; the ESP32
+    # Air board adds a flags byte (bit 0: rotated 180°)
     FORMAT = struct.Struct("<B H H")
 
     @classmethod
     def decode(cls, data: bytes) -> "Display":
         present, mask, page_ms = cls.FORMAT.unpack(data[: cls.FORMAT.size])
         pages = [name for i, name in enumerate(DISPLAY_PAGES) if mask & (1 << i)]
-        return cls(bool(present), pages, page_ms / 1000)
+        rotated = bool(data[cls.FORMAT.size] & 1) if len(data) > cls.FORMAT.size else None
+        return cls(bool(present), pages, page_ms / 1000, rotated)
 
     def encode(self) -> bytes:
-        return self.FORMAT.pack(int(self.present), display_page_mask(self.pages), round(self.page_time_s * 1000))
+        data = self.FORMAT.pack(int(self.present), display_page_mask(self.pages), round(self.page_time_s * 1000))
+        return data if self.rotated is None else data + bytes([int(self.rotated)])
 
 
 def display_page_mask(pages: list[str]) -> int:

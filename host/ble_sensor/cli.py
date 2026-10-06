@@ -157,14 +157,17 @@ async def cmd_display(board: BleSensor, args: argparse.Namespace) -> None:
     pages = None
     if args.pages is not None:
         pages = available if args.pages == "all" else [] if args.pages == "none" else args.pages.split(",")
-    if pages is not None or args.page_time is not None:
+    rotated = None if args.rotate is None else args.rotate == "on"
+    if pages is not None or args.page_time is not None or rotated is not None:
         try:
-            await board.set_display(pages=pages, page_time_s=args.page_time)
+            await board.set_display(pages=pages, page_time_s=args.page_time, rotated=rotated)
         except ValueError as e:
             raise SystemExit(str(e))
     display = await board.read_display()
     print(f"display:  {'connected' if display.present else 'not connected'}")
     print(f"each reading shown for {display.page_time_s:g} s")
+    if display.rotated is not None:
+        print(f"upside down: {'yes' if display.rotated else 'no'}")
     for name in available:
         print(f"  [{'x' if name in display.pages else ' '}] {name}")
 
@@ -235,6 +238,7 @@ def build_parser() -> argparse.ArgumentParser:
     display.add_argument("--pages", help=f"comma list of {','.join(DISPLAY_PAGES)}, or 'all' / 'none'")
     display.add_argument("--page-time", type=float,
                          help=f"seconds per reading, {DISPLAY_PAGE_TIME_S[0]:g} to {DISPLAY_PAGE_TIME_S[1]:g}")
+    display.add_argument("--rotate", choices=["on", "off"], help="turn the picture 180° (ESP32 Air board)")
 
     name = add("name", cmd_name, "rename the board (stored)")
     name.add_argument("new_name")

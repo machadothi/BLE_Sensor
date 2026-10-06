@@ -147,14 +147,20 @@ class BleSensor:
             raise ValueError(f"name must be 1-{NAME_MAX_LEN} bytes")
         await self._write(NAME_UUID, raw)
 
-    async def set_display(self, pages: Optional[list[str]] = None, page_time_s: Optional[float] = None) -> Display:
+    async def set_display(self, pages: Optional[list[str]] = None, page_time_s: Optional[float] = None,
+                          rotated: Optional[bool] = None) -> Display:
         """Changes what the OLED shows: the readings (names from
-        protocol.DISPLAY_PAGES) and/or seconds per reading. Stored on the board."""
+        protocol.DISPLAY_PAGES), seconds per reading and/or 180° rotation
+        (ESP32 Air board only). Stored on the board."""
         display = await self.read_display()
         if pages is not None:
             display.pages = pages
         if page_time_s is not None:
             display.page_time_s = page_time_s
+        if rotated is not None:
+            if display.rotated is None:
+                raise ValueError("this board can't rotate its display from a client")
+            display.rotated = rotated
         await self._write(DISPLAY_UUID, display.encode())
         return display
 

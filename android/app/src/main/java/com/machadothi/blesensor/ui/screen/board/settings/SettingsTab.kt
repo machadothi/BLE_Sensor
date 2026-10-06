@@ -71,7 +71,7 @@ fun SettingsTab(viewModel: BoardViewModel) {
         ) {
             NameCard(savedName, viewModel::setName)
             display?.let { state ->
-                DisplayCard(state, info, onPagesChanged = viewModel::setDisplayPages, onPageMsChanged = viewModel::setDisplayPageMs)
+                DisplayCard(state, info, onPagesChanged = viewModel::setDisplayPages, onPageMsChanged = viewModel::setDisplayPageMs, onRotatedChanged = viewModel::setDisplayRotated)
             }
         }
         return
@@ -116,6 +116,7 @@ fun SettingsTab(viewModel: BoardViewModel) {
                     state, info,
                     onPagesChanged = viewModel::setDisplayPages,
                     onPageMsChanged = viewModel::setDisplayPageMs,
+                    onRotatedChanged = viewModel::setDisplayRotated,
                 )
             }
 

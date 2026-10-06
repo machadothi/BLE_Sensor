@@ -20,6 +20,7 @@ import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Science
+import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.Tv
@@ -88,6 +89,7 @@ fun DisplayCard(
     info: BoardInfo?,
     onPagesChanged: (Set<DisplayPage>) -> Unit,
     onPageMsChanged: (Int) -> Unit,
+    onRotatedChanged: (Boolean) -> Unit = {},
 ) {
     val available = DisplayPage.entries.filter { info == null || it.isAvailableOn(info) }.toSet()
     // Thunderboards list all their pages (absent sensors greyed out); the ESP32 Air board only its own.
@@ -122,6 +124,18 @@ fun DisplayCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 6.dp),
                 )
+            }
+            // Only boards that can turn the picture from the app (ESP32 Air) send this.
+            display.rotated?.let { rotated ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.ScreenRotation, null, tint = if (display.present) Lime else MaterialTheme.colorScheme.outline, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Upside down", style = MaterialTheme.typography.bodyLarge)
+                        Text("Turns the picture 180°", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    AppSwitch(checked = rotated, enabled = display.present, onCheckedChange = onRotatedChanged)
+                }
             }
             LabeledSlider(
                 label = "Each reading for",
