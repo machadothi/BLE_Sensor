@@ -39,6 +39,7 @@ class BoardViewModel @Inject constructor(
     val button = repository.button
     val air = repository.air
     val system = repository.system
+    val temperatureOffset = repository.temperatureOffset
     val hasLed = repository.hasLed
     val hasConfig = repository.hasConfig
     val rssi = repository.rssi
@@ -67,6 +68,9 @@ class BoardViewModel @Inject constructor(
     fun setDisplayPageMs(pageMs: Int) = updateDisplay { it.copy(pageMs = pageMs) }
 
     fun setDisplayRotated(rotated: Boolean) = updateDisplay { it.copy(rotated = rotated) }
+
+    fun setTemperatureOffset(offsetC: Float) =
+        run("Temperature offset saved on the board") { repository.setTemperatureOffset(offsetC) }
 
     private fun updateDisplay(change: (DisplayState) -> DisplayState) {
         val current = display.value ?: return

@@ -55,6 +55,7 @@ class BoardRepositoryImpl @Inject constructor(
     override val button = MutableStateFlow<ButtonState?>(null)
     override val air = MutableStateFlow<AirReading?>(null)
     override val system = MutableStateFlow<SystemInfo?>(null)
+    override val temperatureOffset = MutableStateFlow<Float?>(null)
     override val hasLed = MutableStateFlow(false)
     override val hasConfig = MutableStateFlow(false)
     override val rssi = MutableStateFlow<Int?>(null)
@@ -111,6 +112,7 @@ class BoardRepositoryImpl @Inject constructor(
         button.value = null
         air.value = null
         system.value = null
+        temperatureOffset.value = null
         hasLed.value = false
         hasConfig.value = false
         rssi.value = null
@@ -128,6 +130,7 @@ class BoardRepositoryImpl @Inject constructor(
         button.value = if (conn.has(Protocol.BUTTON)) ButtonState.decode(conn.read(Protocol.BUTTON)) else null
         display.value = if (conn.has(Protocol.DISPLAY)) DisplayState.decode(conn.read(Protocol.DISPLAY)) else null
         air.value = if (conn.has(Protocol.AIR)) runCatching { AirReading.decode(conn.read(Protocol.AIR)) }.getOrNull() else null
+        temperatureOffset.value = if (conn.has(Protocol.CALIBRATION)) readOffset(conn) else null
         system.value = if (conn.has(Protocol.SYSTEM)) runCatching { SystemInfo.decode(conn.read(Protocol.SYSTEM)) }.getOrNull() else null
         // The first Env notification can take a few seconds; read one now.
         runCatching { Env.decode(conn.read(Protocol.ENV)) }.onSuccess { env.value = it }
@@ -208,6 +211,20 @@ class BoardRepositoryImpl @Inject constructor(
         require(bytes.size in 1..Protocol.NAME_MAX_BYTES) { "Name must be 1-${Protocol.NAME_MAX_BYTES} bytes" }
         requireConnection().write(Protocol.NAME, bytes)
         this.name.value = name.trim()
+    }
+
+    private suspend fun readOffset(conn: BoardConnection): Float? {
+        val bytes = conn.read(Protocol.CALIBRATION)
+        if (bytes.size < 2) return null
+        return ((bytes[0].toInt() and 0xFF) or (bytes[1].toInt() shl 8)).toShort() / 100f
+    }
+
+    override suspend fun setTemperatureOffset(offsetC: Float) {
+        require(offsetC in -Protocol.OFFSET_MAX_C..Protocol.OFFSET_MAX_C) { "Offset must be within ±${Protocol.OFFSET_MAX_C.toInt()} °C" }
+        val conn = requireConnection()
+        val raw = Math.round(offsetC * 100)
+        conn.write(Protocol.CALIBRATION, byteArrayOf(raw.toByte(), (raw shr 8).toByte()))
+        temperatureOffset.value = readOffset(conn)
     }
 
     override suspend fun send(command: Command) {

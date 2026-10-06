@@ -26,6 +26,8 @@ object Protocol {
     val DISPLAY: UUID = uuid(0x09)   // optional: firmware without it has no OLED support
     val AIR: UUID = uuid(0x0A)       // optional: air-quality boards (ESP32 Air) only
     val SYSTEM: UUID = uuid(0x0B)    // optional: board status (ESP32 Air) only
+    val CALIBRATION: UUID = uuid(0x0C) // optional: i16 temperature offset, °C × 100 (ESP32 Air) only
+    const val OFFSET_MAX_C = 10f
 
     /** Advertised manufacturer data: company id, then board id and protocol version. */
     const val ADV_COMPANY_ID = 0x02FF

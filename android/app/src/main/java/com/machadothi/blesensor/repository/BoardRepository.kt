@@ -49,6 +49,8 @@ interface BoardRepository {
     val air: StateFlow<AirReading?>
     /** Null unless the board reports its own status (ESP32 Air). */
     val system: StateFlow<SystemInfo?>
+    /** °C added to the board's temperature; null if the board has no Calibration (Thunderboard). */
+    val temperatureOffset: StateFlow<Float?>
     /** False on boards without LED/config/motion (ESP32 Air): the UI hides those parts. */
     val hasLed: StateFlow<Boolean>
     val hasConfig: StateFlow<Boolean>
@@ -68,4 +70,5 @@ interface BoardRepository {
     /** What the OLED shows and for how long each reading (present is ignored). */
     suspend fun setDisplay(display: DisplayState)
     suspend fun send(command: Command)
+    suspend fun setTemperatureOffset(offsetC: Float)
 }

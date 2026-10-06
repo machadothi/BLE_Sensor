@@ -1,5 +1,7 @@
 package com.machadothi.blesensor.ui.screen.board.settings
 
+import androidx.compose.material.icons.rounded.Thermostat
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -70,6 +72,9 @@ fun SettingsTab(viewModel: BoardViewModel) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             NameCard(savedName, viewModel::setName)
+            val offset by viewModel.temperatureOffset.collectAsStateWithLifecycle()
+            val env by viewModel.env.collectAsStateWithLifecycle()
+            offset?.let { CalibrationCard(it, env?.temperatureC, viewModel::setTemperatureOffset) }
             display?.let { state ->
                 DisplayCard(state, info, onPagesChanged = viewModel::setDisplayPages, onPageMsChanged = viewModel::setDisplayPageMs, onRotatedChanged = viewModel::setDisplayRotated)
             }
@@ -240,6 +245,42 @@ private fun NameCard(savedName: String?, onSave: (String) -> Unit) {
                     enabled = nameDraft.trim() != savedName && nameBytes in 1..Protocol.NAME_MAX_BYTES,
                 ) { Text("Save") }
             }
+        }
+    }
+}
+
+/**
+ * Temperature offset (ESP32 Air): the AHT21 shares its board with the ENS160,
+ * whose heaters warm it; compare with a trusted thermometer and correct here.
+ * Humidity and the ENS160's compensation follow the corrected temperature.
+ */
+@Composable
+private fun CalibrationCard(offsetC: Float, shownC: Float?, onSave: (Float) -> Unit) {
+    var draft by remember(offsetC) { mutableFloatStateOf(offsetC) }
+    GlowCard(Modifier.fillMaxWidth(), accent = Amber) {
+        Column {
+            CardHeader(Icons.Rounded.Thermostat, "Calibration", Amber)
+            LabeledSlider(
+                label = "Temperature offset",
+                valueText = "%+.1f °C".format(draft),
+                value = draft,
+                range = -5f..5f,
+                onChange = { draft = Math.round(it * 10) / 10f },
+                onChangeFinished = { onSave(draft) },
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            )
+            if (shownC != null) {
+                Text(
+                    "Sensor measures %.1f °C, shown as %.1f °C".format(shownC - offsetC, shownC - offsetC + draft),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Text(
+                "The air sensor next to it heats the board. After 30 minutes, compare with a thermometer you trust " +
+                    "and set the difference (e.g. board 26.0 °C, room 24.0 °C: −2.0). Humidity is corrected to match.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
