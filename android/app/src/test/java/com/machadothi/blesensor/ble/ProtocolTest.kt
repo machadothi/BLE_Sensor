@@ -152,4 +152,22 @@ class ProtocolTest {
         assertEquals(true, esp32.rotated)
         assertArrayEquals(hex("01031c881300"), esp32.copy(rotated = false).encode())
     }
+
+    @Test
+    fun calibrationStatus() {
+        val cooling = CalibrationStatus.decode(hex("6aff01027d00b004640a150aff7fffffffff0000"))
+        assertEquals(-1.5f, cooling.offsetC, 0.001f)
+        assertEquals(true, cooling.auto)
+        assertEquals(CalibrationStatus.State.COOLING, cooling.state)
+        assertEquals(125, cooling.elapsedS)
+        assertEquals(26.6f, cooling.warmC!!, 0.001f)
+        assertEquals(null, cooling.resultC)
+        assertEquals(null, cooling.resultAgeS)
+
+        val failed = CalibrationStatus.decode(hex("000000040000b004640a8c0aff7fffffffff0200"))
+        assertEquals(CalibrationStatus.State.FAILED, failed.state)
+        assertEquals("the room temperature changed during the measurement", failed.failure)
+
+        assertEquals(false, CalibrationStatus.decode(hex("6aff")).canMeasure)   // 2-byte offset only
+    }
 }

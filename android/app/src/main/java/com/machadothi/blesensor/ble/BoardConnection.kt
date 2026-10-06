@@ -31,12 +31,14 @@ class BoardConnection(context: Context) : BleManager(context) {
     private val buttonFlow = notifications()
     private val airFlow = notifications()
     private val systemFlow = notifications()
+    private val calibrationFlow = notifications()
 
     val envNotifications: SharedFlow<ByteArray> = envFlow
     val motionNotifications: SharedFlow<ByteArray> = motionFlow
     val buttonNotifications: SharedFlow<ByteArray> = buttonFlow
     val airNotifications: SharedFlow<ByteArray> = airFlow
     val systemNotifications: SharedFlow<ByteArray> = systemFlow
+    val calibrationNotifications: SharedFlow<ByteArray> = calibrationFlow
 
     override fun isRequiredServiceSupported(gatt: BluetoothGatt): Boolean {
         val service = gatt.getService(Protocol.SERVICE) ?: return false
@@ -60,6 +62,7 @@ class BoardConnection(context: Context) : BleManager(context) {
         subscribe(Protocol.BUTTON, buttonFlow)
         subscribe(Protocol.AIR, airFlow)
         subscribe(Protocol.SYSTEM, systemFlow)
+        subscribe(Protocol.CALIBRATION, calibrationFlow)
     }
 
     private fun subscribe(uuid: UUID, flow: MutableSharedFlow<ByteArray>) {

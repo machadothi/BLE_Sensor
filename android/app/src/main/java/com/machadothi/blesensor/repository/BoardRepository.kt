@@ -3,6 +3,7 @@ package com.machadothi.blesensor.repository
 import com.machadothi.blesensor.ble.AirReading
 import com.machadothi.blesensor.ble.BoardConfig
 import com.machadothi.blesensor.ble.BoardInfo
+import com.machadothi.blesensor.ble.CalibrationStatus
 import com.machadothi.blesensor.ble.ButtonState
 import com.machadothi.blesensor.ble.Command
 import com.machadothi.blesensor.ble.DisplayPage
@@ -49,8 +50,8 @@ interface BoardRepository {
     val air: StateFlow<AirReading?>
     /** Null unless the board reports its own status (ESP32 Air). */
     val system: StateFlow<SystemInfo?>
-    /** °C added to the board's temperature; null if the board has no Calibration (Thunderboard). */
-    val temperatureOffset: StateFlow<Float?>
+    /** Temperature offset and self-heating measurement; null if the board has no Calibration (Thunderboard). */
+    val calibration: StateFlow<CalibrationStatus?>
     /** False on boards without LED/config/motion (ESP32 Air): the UI hides those parts. */
     val hasLed: StateFlow<Boolean>
     val hasConfig: StateFlow<Boolean>
@@ -71,4 +72,6 @@ interface BoardRepository {
     suspend fun setDisplay(display: DisplayState)
     suspend fun send(command: Command)
     suspend fun setTemperatureOffset(offsetC: Float)
+    /** command: 0 none, 1 start a self-heating measurement, 2 cancel it. */
+    suspend fun controlCalibration(auto: Boolean, command: Int)
 }

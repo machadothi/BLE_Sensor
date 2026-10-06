@@ -118,7 +118,9 @@ adapts:
   temperature/humidity, the Thunderboard included (computed in the app).
 - **Charts:** eCO2 and TVOC are added.
 - **No Motion tab.** **Control** has only identify, reboot and factory reset.
-- **Settings:** only name and display pages, with the board's five pages.
+- **Settings:** name, display pages (and "Upside down"), and **Calibration**:
+  the temperature offset slider, "Measure now" (the board measures its own
+  self-heating, with live progress), and a daily automatic measurement.
 
 `BoardConnection` requires only Env, Info, Command and Name; Motion, Button,
 LED, Config, Display and Air are optional. The repository exposes `air`,

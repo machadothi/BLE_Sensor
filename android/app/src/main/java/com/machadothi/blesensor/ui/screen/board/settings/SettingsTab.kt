@@ -1,5 +1,8 @@
 package com.machadothi.blesensor.ui.screen.board.settings
 
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.animation.AnimatedContent
+import com.machadothi.blesensor.ble.CalibrationStatus
 import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.animation.AnimatedVisibility
@@ -72,9 +75,17 @@ fun SettingsTab(viewModel: BoardViewModel) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             NameCard(savedName, viewModel::setName)
-            val offset by viewModel.temperatureOffset.collectAsStateWithLifecycle()
+            val calibration by viewModel.calibration.collectAsStateWithLifecycle()
             val env by viewModel.env.collectAsStateWithLifecycle()
-            offset?.let { CalibrationCard(it, env?.temperatureC, viewModel::setTemperatureOffset) }
+            calibration?.let {
+                CalibrationCard(
+                    it, env?.temperatureC,
+                    onOffset = viewModel::setTemperatureOffset,
+                    onAuto = viewModel::setAutoCalibration,
+                    onStart = viewModel::startCalibration,
+                    onCancel = viewModel::cancelCalibration,
+                )
+            }
             display?.let { state ->
                 DisplayCard(state, info, onPagesChanged = viewModel::setDisplayPages, onPageMsChanged = viewModel::setDisplayPageMs, onRotatedChanged = viewModel::setDisplayRotated)
             }
@@ -251,13 +262,22 @@ private fun NameCard(savedName: String?, onSave: (String) -> Unit) {
 
 /**
  * Temperature offset (ESP32 Air): the AHT21 shares its board with the ENS160,
- * whose heaters warm it; compare with a trusted thermometer and correct here.
- * Humidity and the ENS160's compensation follow the corrected temperature.
+ * whose heaters warm it. Set it by hand against a trusted thermometer, or let
+ * the board measure it: it puts the ENS160 to sleep and sees how far the
+ * temperature drops. Humidity and the ENS160's compensation follow.
  */
 @Composable
-private fun CalibrationCard(offsetC: Float, shownC: Float?, onSave: (Float) -> Unit) {
-    var draft by remember(offsetC) { mutableFloatStateOf(offsetC) }
-    GlowCard(Modifier.fillMaxWidth(), accent = Amber) {
+private fun CalibrationCard(
+    status: CalibrationStatus,
+    shownC: Float?,
+    onOffset: (Float) -> Unit,
+    onAuto: (Boolean) -> Unit,
+    onStart: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    var draft by remember(status.offsetC) { mutableFloatStateOf(status.offsetC) }
+    val cooling = status.state == CalibrationStatus.State.COOLING
+    GlowCard(Modifier.fillMaxWidth(), accent = Amber, highlighted = cooling) {
         Column {
             CardHeader(Icons.Rounded.Thermostat, "Calibration", Amber)
             LabeledSlider(
@@ -266,21 +286,79 @@ private fun CalibrationCard(offsetC: Float, shownC: Float?, onSave: (Float) -> U
                 value = draft,
                 range = -5f..5f,
                 onChange = { draft = Math.round(it * 10) / 10f },
-                onChangeFinished = { onSave(draft) },
+                onChangeFinished = { onOffset(draft) },
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             )
-            if (shownC != null) {
+            if (shownC != null && !cooling) {
                 Text(
-                    "Sensor measures %.1f °C, shown as %.1f °C".format(shownC - offsetC, shownC - offsetC + draft),
+                    "Sensor measures %.1f °C, shown as %.1f °C".format(shownC - status.offsetC, shownC - status.offsetC + draft),
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
-            Text(
-                "The air sensor next to it heats the board. After 30 minutes, compare with a thermometer you trust " +
-                    "and set the difference (e.g. board 26.0 °C, room 24.0 °C: −2.0). Humidity is corrected to match.",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (status.canMeasure) {
+                Spacer(Modifier.height(12.dp))
+                Text("Measure the offset automatically", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "The board puts its air sensor to sleep, waits until the temperature stops falling " +
+                        "(5–${status.cooldownS / 60} min) and uses the drop as the offset. No air readings meanwhile, " +
+                        "then 3 min warm-up.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                AnimatedContent(targetState = cooling, label = "calibration") { running ->
+                    if (running) {
+                        Column(Modifier.padding(top = 8.dp)) {
+                            LinearProgressIndicator(
+                                progress = { if (status.cooldownS > 0) status.elapsedS / status.cooldownS.toFloat() else 0f },
+                                color = Amber,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            val drop = if (status.warmC != null && status.nowC != null) status.nowC - status.warmC else null
+                            Text(
+                                "Cooling for ${status.elapsedS / 60} min ${status.elapsedS % 60} s · " +
+                                    "warm %.2f °C → now %.2f °C".format(status.warmC ?: 0f, status.nowC ?: 0f) +
+                                    (drop?.let { " (%+.2f)".format(it) } ?: ""),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            TextButton(onClick = onCancel) { Text("Cancel") }
+                        }
+                    } else {
+                        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            FilledTonalButton(onClick = onStart) { Text("Measure now") }
+                            Spacer(Modifier.weight(1f))
+                            Text("Daily", style = MaterialTheme.typography.bodyMedium)
+                            Spacer(Modifier.width(8.dp))
+                            AppSwitch(checked = status.auto == true, onCheckedChange = onAuto)
+                        }
+                    }
+                }
+                val last = when (status.state) {
+                    CalibrationStatus.State.DONE -> status.resultC?.let { r ->
+                        "Last measurement: %+.1f °C".format(r) + (status.resultAgeS?.let { " · ${formatAge(it)} ago" } ?: "") +
+                            " (now in use)"
+                    }
+                    CalibrationStatus.State.FAILED -> "Last measurement failed: ${status.failure ?: "unknown reason"}"
+                    else -> null
+                }
+                if (last != null) {
+                    Text(last, style = MaterialTheme.typography.labelMedium, color = Amber, modifier = Modifier.padding(top = 4.dp))
+                }
+            } else {
+                Text(
+                    "The air sensor next to it heats the board. After 30 minutes, compare with a thermometer you trust " +
+                        "and set the difference (e.g. board 26.0 °C, room 24.0 °C: −2.0). Humidity is corrected to match.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
+}
+
+private fun formatAge(seconds: Long): String = when {
+    seconds < 60 -> "$seconds s"
+    seconds < 3600 -> "${seconds / 60} min"
+    seconds < 86_400 -> "${seconds / 3600} h"
+    else -> "${seconds / 86_400} d"
 }

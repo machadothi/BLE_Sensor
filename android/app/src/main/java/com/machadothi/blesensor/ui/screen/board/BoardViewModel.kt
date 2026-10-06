@@ -39,7 +39,7 @@ class BoardViewModel @Inject constructor(
     val button = repository.button
     val air = repository.air
     val system = repository.system
-    val temperatureOffset = repository.temperatureOffset
+    val calibration = repository.calibration
     val hasLed = repository.hasLed
     val hasConfig = repository.hasConfig
     val rssi = repository.rssi
@@ -71,6 +71,18 @@ class BoardViewModel @Inject constructor(
 
     fun setTemperatureOffset(offsetC: Float) =
         run("Temperature offset saved on the board") { repository.setTemperatureOffset(offsetC) }
+
+    fun setAutoCalibration(auto: Boolean) = run("Saved", quiet = true) { repository.controlCalibration(auto, 0) }
+
+    fun startCalibration() {
+        val auto = calibration.value?.auto ?: false
+        run("Measuring: the air sensor sleeps while the board cools down") { repository.controlCalibration(auto, 1) }
+    }
+
+    fun cancelCalibration() {
+        val auto = calibration.value?.auto ?: false
+        run("Measurement cancelled") { repository.controlCalibration(auto, 2) }
+    }
 
     private fun updateDisplay(change: (DisplayState) -> DisplayState) {
         val current = display.value ?: return

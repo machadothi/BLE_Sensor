@@ -481,3 +481,56 @@ object Derived {
         else -> "Muggy"
     }
 }
+
+/**
+ * Calibration (ESP32 Air): the temperature offset and the self-heating
+ * measurement (the board puts its air sensor to sleep and measures how much the
+ * temperature drops). 20 bytes; older firmware sends only the 2-byte offset.
+ */
+data class CalibrationStatus(
+    val offsetC: Float,
+    /** Null when the board can't measure the offset itself (2-byte value). */
+    val auto: Boolean? = null,
+    val state: State = State.IDLE,
+    val elapsedS: Int = 0,
+    val cooldownS: Int = 0,
+    val warmC: Float? = null,
+    val nowC: Float? = null,
+    val resultC: Float? = null,
+    val resultAgeS: Long? = null,
+    val failure: String? = null,
+) {
+    enum class State { IDLE, COOLING, DONE, FAILED }
+
+    val canMeasure: Boolean get() = auto != null
+
+    companion object {
+        fun decode(bytes: ByteArray): CalibrationStatus {
+            val b = le(bytes)
+            val offset = b.i16() / 100f
+            if (bytes.size < 20) return CalibrationStatus(offset)
+            fun temp(raw: Int) = if (raw == NONE_I16) null else raw / 100f
+            val auto = b.u8() != 0
+            val state = when (b.u8()) {
+                2 -> State.COOLING
+                3 -> State.DONE
+                4 -> State.FAILED
+                else -> State.IDLE
+            }
+            val elapsed = b.u16()
+            val cooldown = b.u16()
+            val warm = temp(b.i16())
+            val now = temp(b.i16())
+            val result = temp(b.i16())
+            val age = b.u32()
+            val reason = when (b.u8()) {
+                1 -> "a sensor isn't answering"
+                2 -> "the room temperature changed during the measurement"
+                3 -> "cancelled"
+                4 -> "the result was out of range"
+                else -> null
+            }
+            return CalibrationStatus(offset, auto, state, elapsed, cooldown, warm, now, result, age.takeIf { it != 0xFFFF_FFFFL }, reason)
+        }
+    }
+}
