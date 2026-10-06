@@ -41,15 +41,19 @@ object Protocol {
     }
 }
 
-/** Sensors, in the bit order of Config.sensor_mask and Info.available_mask. */
-enum class Sensor(val bit: Int, val label: String) {
+/**
+ * Sensors, in the bit order of Config.sensor_mask and Info.available_mask.
+ * [switchable]: one of the Thunderboard's sensors that Config can turn on and off.
+ * Air quality is only reported by the ESP32 Air board (Info), which has no Config.
+ */
+enum class Sensor(val bit: Int, val label: String, val switchable: Boolean = true) {
     RHT(1 shl 0, "Temperature & humidity"),
     LIGHT(1 shl 1, "Light"),
     HALL(1 shl 2, "Magnetic field"),
     IMU(1 shl 3, "Motion (IMU)"),
     SOUND(1 shl 4, "Sound"),
     SUPPLY(1 shl 5, "Supply voltage"),
-    AIR(1 shl 6, "Air quality (ENS160)");
+    AIR(1 shl 6, "Air quality (ENS160)", switchable = false);
 
     companion object {
         fun fromMask(mask: Int): Set<Sensor> = entries.filter { mask and it.bit != 0 }.toSet()

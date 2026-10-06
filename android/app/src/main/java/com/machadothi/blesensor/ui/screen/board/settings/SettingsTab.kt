@@ -92,7 +92,8 @@ fun SettingsTab(viewModel: BoardViewModel) {
             GlowCard(Modifier.fillMaxWidth(), accent = Teal) {
                 Column {
                     CardHeader(Icons.Rounded.Sensors, "Sensors", Teal)
-                    Sensor.entries.forEach { sensor ->
+                    // Only the sensors Config can switch (not air quality: ESP32 Air board only).
+                    Sensor.entries.filter { it.switchable }.forEach { sensor ->
                         val present = sensor in available
                         Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {

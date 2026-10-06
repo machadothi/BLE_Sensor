@@ -127,7 +127,7 @@ class BleSensor:
     async def set_config(self, sensors: Optional[list[str]] = None, **changes) -> Config:
         """Changes only the given Config fields; the rest stay as stored.
 
-        sensors: sensor names (see protocol.SENSOR_BITS), instead of sensor_mask.
+        sensors: sensor names (see protocol.CONFIG_SENSORS), instead of sensor_mask.
         """
         config = await self.read_config()
         if sensors is not None:

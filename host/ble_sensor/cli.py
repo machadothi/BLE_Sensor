@@ -11,7 +11,7 @@ from typing import Awaitable, Callable, Optional
 
 from .client import BleSensor
 from .protocol import (
-    COMMANDS, DISPLAY_PAGE_TIME_S, DISPLAY_PAGES, ESP32_AIR, LED_MODES, LIMITS, SENSOR_BITS, Air, Button, Config, Env,
+    COMMANDS, DISPLAY_PAGE_TIME_S, DISPLAY_PAGES, ESP32_AIR, LED_MODES, LIMITS, CONFIG_SENSORS, Air, Button, Config, Env,
     Motion, board_pages,
 )
 
@@ -203,7 +203,7 @@ def build_parser() -> argparse.ArgumentParser:
     led.add_argument("--off-ms", type=int, default=500)
 
     config = add("config", cmd_config, "show or change the stored configuration")
-    config.add_argument("--sensors", help=f"comma list of {','.join(SENSOR_BITS)}, or 'none'")
+    config.add_argument("--sensors", help=f"comma list of {','.join(CONFIG_SENSORS)}, or 'none'")
     config.add_argument("--env-period", dest="env_period_ms", type=int,
                         help=_range_help("env_period_ms", "ms"))
     config.add_argument("--motion-period", dest="motion_period_ms", type=int,

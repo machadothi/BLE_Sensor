@@ -44,8 +44,10 @@ SENSOR_BITS = {
     "imu": 1 << 3,     # accelerometer + gyroscope
     "sound": 1 << 4,   # microphone (BRD4184B)
     "supply": 1 << 5,  # supply voltage
-    "air": 1 << 6,     # ENS160 air quality (ESP32 Air board)
+    "air": 1 << 6,     # ENS160 air quality (ESP32 Air board): reported in Info only
 }
+# Sensors Config can switch on and off (the Thunderboard's); not "air".
+CONFIG_SENSORS = [name for name in SENSOR_BITS if name != "air"]
 
 LED_MODES = {"off": 0, "on": 1, "blink": 2}
 
@@ -99,7 +101,7 @@ def sensor_names(mask: int) -> list[str]:
 
 def sensor_mask(names: list[str]) -> int:
     """Sensor mask from names; raises ValueError for unknown names."""
-    unknown = set(names) - set(SENSOR_BITS)
+    unknown = set(names) - set(CONFIG_SENSORS)
     if unknown:
         raise ValueError(f"unknown sensors: {', '.join(sorted(unknown))}")
     return sum(SENSOR_BITS[name] for name in names)
