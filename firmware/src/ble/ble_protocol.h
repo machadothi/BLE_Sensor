@@ -24,6 +24,10 @@
 // Board revision, reported in the Info characteristic and in advertising.
 #define BOARD_ID_BRD4184A             0x0A
 #define BOARD_ID_BRD4184B             0x0B
+// Not this firmware: the ESP32 + ENS160/AHT21 air monitor (~/git/air_quality_sensor,
+// firmware/ble.py) speaks the same protocol with this board id. It has Env, Info,
+// Command, Name, Display and Air, and no Motion, Button, LED or Config.
+#define BOARD_ID_ESP32_AIR            0x0C
 
 // Sensor bits: Config.sensor_mask (which sensors to sample) and
 // Info.available_mask (which sensors this board has).
@@ -33,7 +37,8 @@
 #define SENSOR_BIT_IMU                (1u << 3) // ICM-20648 accelerometer + gyroscope
 #define SENSOR_BIT_SOUND              (1u << 4) // PDM microphone (B only)
 #define SENSOR_BIT_SUPPLY             (1u << 5) // supply voltage
-#define SENSOR_BIT_ALL                0x3Fu
+#define SENSOR_BIT_ALL                0x3Fu     // this firmware's sensors
+#define SENSOR_BIT_AIR                (1u << 6) // ENS160 air quality (ESP32 Air board only)
 
 // Env.valid bits: which fields of an Env packet hold a fresh reading.
 #define ENV_VALID_TEMPERATURE         (1u << 0)
@@ -87,7 +92,11 @@ typedef enum {
 #define DISPLAY_PAGE_BIT_CHIP_TEMPERATURE  (1u << 7)
 #define DISPLAY_PAGE_BIT_ORIENTATION       (1u << 8)
 #define DISPLAY_PAGE_BIT_BUTTON            (1u << 9)
-#define DISPLAY_PAGE_ALL                   0x03FFu
+#define DISPLAY_PAGE_ALL                   0x03FFu  // this firmware's pages
+// ESP32 Air board pages (with TEMPERATURE and HUMIDITY above)
+#define DISPLAY_PAGE_BIT_AIR_QUALITY       (1u << 10)
+#define DISPLAY_PAGE_BIT_ECO2              (1u << 11)
+#define DISPLAY_PAGE_BIT_TVOC              (1u << 12)
 
 // Display.page_ms: how long each reading stays on screen. Below 1 s the fade
 // between pages (~0.3 s) would take most of the time.
@@ -158,6 +167,15 @@ typedef struct {
   uint16_t page_ms;               // time per reading, LIMIT_DISPLAY_PAGE_MIN/MAX_MS
 } ble_sensor_display_t;
 
+// Air (read, notify), characteristic a7e4000a: ESP32 Air board only.
+typedef struct {
+  uint32_t uptime_ms;
+  uint8_t  state;                 // ENS160 validity: 0 normal, 1 warm-up, 2 start-up, 3 invalid; 0xFF no sensor
+  uint8_t  aqi;                   // 1-5 (UBA), 0 unless state is normal
+  uint16_t eco2_ppm;              // 0 unless state is normal
+  uint16_t tvoc_ppb;              // 0 unless state is normal
+} ble_sensor_air_t;
+
 #pragma pack(pop)
 
 // Sizes must match the value lengths in gatt_configuration.btconf.
@@ -168,5 +186,6 @@ _Static_assert(sizeof(ble_sensor_led_t) == 5, "LED must be 5 bytes");
 _Static_assert(sizeof(ble_sensor_config_t) == 12, "Config must be 12 bytes");
 _Static_assert(sizeof(ble_sensor_info_t) == 4, "Info must be 4 bytes");
 _Static_assert(sizeof(ble_sensor_display_t) == 5, "Display must be 5 bytes");
+_Static_assert(sizeof(ble_sensor_air_t) == 10, "Air must be 10 bytes");
 
 #endif // BLE_PROTOCOL_H

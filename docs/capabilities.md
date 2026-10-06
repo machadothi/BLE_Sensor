@@ -177,13 +177,15 @@ Valid bits: 0 temperature, 1 humidity, 2 lux, 3 UV, 4 hall, 5 sound,
 | 10 | u16 | hall threshold, µT |
 
 <a id="sensor-bits"></a>Sensor bits (used by both Config and Info): 0 RHT,
-1 light, 2 hall, 3 IMU, 4 sound, 5 supply voltage. The UART line
+1 light, 2 hall, 3 IMU, 4 sound, 5 supply voltage (6 air quality: ESP32 Air
+board only, in Info). The UART line
 `Sensors available: 0x2F` means bits 0, 1, 2, 3, 5.
 
 ### Info (4 bytes)
 
-`u8 protocol_version` (1), `u8 board` (`0x0A` = BRD4184A, `0x0B` = BRD4184B),
-`u8 available sensor bits`, `u8 reserved`.
+`u8 protocol_version` (1), `u8 board` (`0x0A` = BRD4184A, `0x0B` = BRD4184B,
+`0x0C` = ESP32 Air, see [below](#other-boards-esp32-air)), `u8 available sensor
+bits` (bit 6 = air quality, ESP32 Air only), `u8 reserved`.
 
 ### Display (5 bytes)
 
@@ -244,3 +246,35 @@ packet layout is in [home-assistant.md](home-assistant.md#how-it-works).
 Other services: Generic Access (`1800`) with a writable Device Name, and Device
 Information (`180A`): manufacturer "Silicon Labs", model "Thunderboard BG22",
 firmware "1.0.0".
+
+## Other boards: ESP32 Air
+
+The ESP32 + ENS160/AHT21 air monitor (separate project, `~/git/air_quality_sensor`)
+speaks this same protocol, so the phone app and `ble-sensor` work with it too.
+Board id `0x0C`, sensors `0x41` (temperature/humidity + air quality).
+
+| Characteristic | ESP32 Air |
+|---|---|
+| Env (`01`) | yes, every 2 s; only temperature and humidity are valid |
+| Motion, Button, LED, Config (`02`–`05`) | **absent**; the app hides those parts |
+| Info, Command, Name, Display (`06`–`09`) | yes; commands: factory reset, reboot, identify (flashes its display) |
+| **Air** (`0A`, read, notify, 10 bytes) | new, see below |
+
+Air:
+
+| Offset | Type | Field |
+|---|---|---|
+| 0 | u32 | uptime, ms |
+| 4 | u8 | ENS160 state: 0 normal, 1 warm-up, 2 start-up, 3 invalid, `0xFF` no sensor |
+| 5 | u8 | AQI 1–5 (UBA), 0 unless normal |
+| 6 | u16 | eCO2, ppm, 0 unless normal |
+| 8 | u16 | TVOC, ppb, 0 unless normal |
+
+Display pages on that board: temperature (bit 0), humidity (bit 1), and its own
+air quality (bit 10), eCO2 (bit 11), TVOC (bit 12). It doesn't answer writes
+with ATT errors (MicroPython can't): it ignores an invalid value and writes the
+previous one back.
+
+The definitions are in `firmware/src/ble/ble_protocol.h` (`BOARD_ID_ESP32_AIR`,
+`SENSOR_BIT_AIR`, `DISPLAY_PAGE_BIT_AIR_QUALITY`…, `ble_sensor_air_t`); the
+ESP32 side is documented in that project's `docs/bluetooth.md`.

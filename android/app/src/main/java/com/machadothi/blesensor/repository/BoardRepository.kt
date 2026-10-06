@@ -1,5 +1,6 @@
 package com.machadothi.blesensor.repository
 
+import com.machadothi.blesensor.ble.AirReading
 import com.machadothi.blesensor.ble.BoardConfig
 import com.machadothi.blesensor.ble.BoardInfo
 import com.machadothi.blesensor.ble.ButtonState
@@ -27,6 +28,8 @@ data class History(
     val hallMt: List<Float> = emptyList(),
     val accelG: List<Float> = emptyList(),
     val gyroDps: List<Float> = emptyList(),
+    val eco2Ppm: List<Float> = emptyList(),
+    val tvocPpb: List<Float> = emptyList(),
 )
 
 /** Everything the app knows about the connected board, as observable state. */
@@ -41,6 +44,11 @@ interface BoardRepository {
     val env: StateFlow<Env?>
     val motion: StateFlow<Motion?>
     val button: StateFlow<ButtonState?>
+    /** Null unless the board measures air quality (ESP32 Air). */
+    val air: StateFlow<AirReading?>
+    /** False on boards without LED/config/motion (ESP32 Air): the UI hides those parts. */
+    val hasLed: StateFlow<Boolean>
+    val hasConfig: StateFlow<Boolean>
     val rssi: StateFlow<Int?>
     val history: StateFlow<History>
 

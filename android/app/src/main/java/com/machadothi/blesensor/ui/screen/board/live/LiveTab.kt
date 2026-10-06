@@ -1,12 +1,15 @@
 package com.machadothi.blesensor.ui.screen.board.live
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,15 +21,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Air
 import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.Co2
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.WaterDrop
@@ -45,6 +52,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.machadothi.blesensor.ble.AirReading
+import com.machadothi.blesensor.ble.AirState
 import com.machadothi.blesensor.ble.ButtonState
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -81,11 +90,13 @@ fun LiveTab(viewModel: BoardViewModel) {
     val config by viewModel.config.collectAsStateWithLifecycle()
     val history by viewModel.history.collectAsStateWithLifecycle()
     val button by viewModel.button.collectAsStateWithLifecycle()
+    val air by viewModel.air.collectAsStateWithLifecycle()
 
     val available = info?.available ?: emptySet()
-    val enabled = config?.sensors ?: emptySet()
+    // Boards without a Config characteristic (ESP32 Air) always run all their sensors.
+    val enabled = config?.sensors
     fun shows(sensor: Sensor) = sensor in available
-    fun offNote(sensor: Sensor) = if (sensor !in enabled) "Off in settings" else null
+    fun offNote(sensor: Sensor) = if (enabled != null && sensor !in enabled) "Off in settings" else null
 
     val e = env
     val metrics = buildList {
@@ -113,7 +124,15 @@ fun LiveTab(viewModel: BoardViewModel) {
         if (shows(Sensor.SUPPLY)) {
             add(Metric("Supply", Icons.Rounded.Bolt, Amber, "V", e?.supplyV, { "%.2f".format(it) }, note = offNote(Sensor.SUPPLY)))
         }
-        add(Metric("Chip temperature", Icons.Rounded.Memory, Coral, "°C", e?.dieTemperatureC, { "%.1f".format(it) }))
+        if (shows(Sensor.AIR)) {
+            val a = air
+            val waiting = a?.state?.takeIf { it != AirState.NORMAL }?.label
+            add(Metric("eCO2", Icons.Rounded.Co2, Sky, "ppm", a?.eco2Ppm?.toFloat(), { "%.0f".format(it) }, history.eco2Ppm, note = waiting))
+            add(Metric("TVOC", Icons.Rounded.Science, Violet, "ppb", a?.tvocPpb?.toFloat(), { "%.0f".format(it) }, history.tvocPpb, note = waiting))
+        }
+        if (info?.isThunderboard == true) {
+            add(Metric("Chip temperature", Icons.Rounded.Memory, Coral, "°C", e?.dieTemperatureC, { "%.1f".format(it) }))
+        }
     }
 
     LazyVerticalGrid(
@@ -123,7 +142,12 @@ fun LiveTab(viewModel: BoardViewModel) {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item(span = { GridItemSpan(maxLineSpan) }) { ButtonCard(button) }
+        if (shows(Sensor.AIR)) {
+            item(span = { GridItemSpan(maxLineSpan) }) { AirQualityCard(air) }
+        }
+        if (button != null) {
+            item(span = { GridItemSpan(maxLineSpan) }) { ButtonCard(button) }
+        }
         items(metrics, key = { it.title }) { MetricCard(it, Modifier.animateItem()) }
     }
 }
@@ -194,6 +218,49 @@ private fun ButtonCard(button: ButtonState?) {
             Column(horizontalAlignment = Alignment.End) {
                 Text("${button?.pressCount ?: 0}", style = MaterialTheme.typography.displaySmall, modifier = Modifier.scale(pop.value))
                 Text("presses", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/** ENS160 rating (UBA scale 1-5) as a word and a five-segment bar; the current segment glows. */
+@Composable
+private fun AirQualityCard(air: AirReading?) {
+    val labels = listOf("Excellent", "Good", "Moderate", "Poor", "Unhealthy")
+    val colors = listOf(Teal, Lime, Amber, Coral, Violet)
+    val index = air?.aqi?.minus(1)
+    val accent by animateColorAsState(index?.let { colors[it] } ?: MaterialTheme.colorScheme.outline, tween(600), label = "aqi")
+    GlowCard(Modifier.fillMaxWidth(), accent = accent, highlighted = index != null && index >= 3) {
+        Column {
+            CardHeader(Icons.Rounded.Air, "Air quality", accent)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                when {
+                    air == null -> "—"
+                    index == null -> air.state.label
+                    else -> labels[index]
+                },
+                style = MaterialTheme.typography.headlineSmall,
+            )
+            Text(
+                when {
+                    air == null -> "Waiting for the sensor"
+                    air.state == AirState.WARM_UP -> "The ENS160 needs about 3 minutes after power-up"
+                    air.state == AirState.START_UP -> "A new ENS160's first hour of operation"
+                    index == null -> ""
+                    index >= 3 -> "Open a window"
+                    index == 2 -> "Ventilate soon"
+                    else -> "Index ${index + 1} of 5"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                colors.forEachIndexed { i, color ->
+                    val alpha by animateFloatAsState(if (i == index) 1f else 0.22f, tween(500), label = "segment")
+                    Box(Modifier.weight(1f).height(8.dp).background(color.copy(alpha = alpha), RoundedCornerShape(4.dp)))
+                }
             }
         }
     }

@@ -58,6 +58,8 @@ private const val BLINK_MAX_MS = 3000f
 @Composable
 fun ControlTab(viewModel: BoardViewModel) {
     val boardLed by viewModel.led.collectAsStateWithLifecycle()
+    val hasLed by viewModel.hasLed.collectAsStateWithLifecycle()
+    val info by viewModel.info.collectAsStateWithLifecycle()
     var led by remember(boardLed) { mutableStateOf(boardLed ?: LedState(LedMode.OFF, 500, 500)) }
     var confirm by remember { mutableStateOf<Command?>(null) }
 
@@ -75,41 +77,43 @@ fun ControlTab(viewModel: BoardViewModel) {
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        GlowCard(Modifier.fillMaxWidth(), accent = Amber, highlighted = lit) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CardHeader(Icons.Rounded.Lightbulb, "LED", Amber)
-                LedOrb(lit, size = 120.dp)
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    LedMode.entries.forEachIndexed { i, mode ->
-                        SegmentedButton(
-                            selected = led.mode == mode,
-                            onClick = { led = led.copy(mode = mode); viewModel.setLed(led) },
-                            shape = SegmentedButtonDefaults.itemShape(i, LedMode.entries.size),
-                        ) { Text(mode.name.lowercase().replaceFirstChar { it.uppercase() }) }
+        if (hasLed) {
+            GlowCard(Modifier.fillMaxWidth(), accent = Amber, highlighted = lit) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CardHeader(Icons.Rounded.Lightbulb, "LED", Amber)
+                    LedOrb(lit, size = 120.dp)
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                        LedMode.entries.forEachIndexed { i, mode ->
+                            SegmentedButton(
+                                selected = led.mode == mode,
+                                onClick = { led = led.copy(mode = mode); viewModel.setLed(led) },
+                                shape = SegmentedButtonDefaults.itemShape(i, LedMode.entries.size),
+                            ) { Text(mode.name.lowercase().replaceFirstChar { it.uppercase() }) }
+                        }
                     }
-                }
-                if (led.mode == LedMode.BLINK) {
-                    Spacer(Modifier.height(12.dp))
-                    LabeledSlider(
-                        label = "On time",
-                        valueText = formatMs(led.onMs),
-                        value = led.onMs.toFloat(),
-                        range = Limits.LED_BLINK_MIN_MS.toFloat()..BLINK_MAX_MS,
-                        logarithmic = true,
-                        onChange = { led = led.copy(onMs = niceRound(it).coerceAtLeast(Limits.LED_BLINK_MIN_MS)) },
-                        onChangeFinished = { viewModel.setLed(led) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    LabeledSlider(
-                        label = "Off time",
-                        valueText = formatMs(led.offMs),
-                        value = led.offMs.toFloat(),
-                        range = Limits.LED_BLINK_MIN_MS.toFloat()..BLINK_MAX_MS,
-                        logarithmic = true,
-                        onChange = { led = led.copy(offMs = niceRound(it).coerceAtLeast(Limits.LED_BLINK_MIN_MS)) },
-                        onChangeFinished = { viewModel.setLed(led) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    if (led.mode == LedMode.BLINK) {
+                        Spacer(Modifier.height(12.dp))
+                        LabeledSlider(
+                            label = "On time",
+                            valueText = formatMs(led.onMs),
+                            value = led.onMs.toFloat(),
+                            range = Limits.LED_BLINK_MIN_MS.toFloat()..BLINK_MAX_MS,
+                            logarithmic = true,
+                            onChange = { led = led.copy(onMs = niceRound(it).coerceAtLeast(Limits.LED_BLINK_MIN_MS)) },
+                            onChangeFinished = { viewModel.setLed(led) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        LabeledSlider(
+                            label = "Off time",
+                            valueText = formatMs(led.offMs),
+                            value = led.offMs.toFloat(),
+                            range = Limits.LED_BLINK_MIN_MS.toFloat()..BLINK_MAX_MS,
+                            logarithmic = true,
+                            onChange = { led = led.copy(offMs = niceRound(it).coerceAtLeast(Limits.LED_BLINK_MIN_MS)) },
+                            onChangeFinished = { viewModel.setLed(led) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                 }
             }
         }
@@ -117,7 +121,8 @@ fun ControlTab(viewModel: BoardViewModel) {
         GlowCard(Modifier.fillMaxWidth(), accent = Teal) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 CardHeader(Icons.Rounded.Visibility, "Board actions", Teal)
-                ActionButton(Icons.Rounded.Visibility, "Identify", "Blink the LED fast for 3 s to spot this board") {
+                val identifyHint = if (hasLed) "Blink the LED fast for 3 s to spot this board" else "Flash the display for 3 s to spot this board"
+                ActionButton(Icons.Rounded.Visibility, "Identify", identifyHint) {
                     viewModel.send(Command.IDENTIFY)
                 }
                 ActionButton(Icons.Rounded.RestartAlt, "Reboot", "Restart the board; the app reconnects when you ask") {

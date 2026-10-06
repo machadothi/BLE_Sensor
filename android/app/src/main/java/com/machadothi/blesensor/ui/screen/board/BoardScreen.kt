@@ -59,6 +59,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.machadothi.blesensor.ble.Sensor
 import com.machadothi.blesensor.repository.ConnectionStatus
 import com.machadothi.blesensor.ui.components.SignalBars
 import com.machadothi.blesensor.ui.screen.board.charts.ChartsTab
@@ -83,6 +84,8 @@ fun BoardScreen(onBack: () -> Unit, viewModel: BoardViewModel = hiltViewModel())
     val info by viewModel.info.collectAsStateWithLifecycle()
     val rssi by viewModel.rssi.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(Tab.LIVE) }
+    // The Motion tab only for boards with an IMU (not the ESP32 Air board).
+    val tabs = Tab.entries.filter { it != Tab.MOTION || info?.available?.contains(Sensor.IMU) != false }
     val snackbar = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) { viewModel.messages.collect { snackbar.showSnackbar(it) } }
@@ -118,7 +121,7 @@ fun BoardScreen(onBack: () -> Unit, viewModel: BoardViewModel = hiltViewModel())
         bottomBar = {
             if (status is ConnectionStatus.Connected) {
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                    Tab.entries.forEach { t ->
+                    tabs.forEach { t ->
                         NavigationBarItem(
                             selected = tab == t,
                             onClick = { tab = t },

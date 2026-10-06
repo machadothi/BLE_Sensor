@@ -91,4 +91,30 @@ class ProtocolTest {
         assertEquals("BRD4184A", info.board)
         assertEquals(setOf(Sensor.RHT, Sensor.LIGHT, Sensor.HALL, Sensor.IMU, Sensor.SUPPLY), info.available)
     }
+
+    // Bytes as the ESP32 Air board sends them (~/git/air_quality_sensor/firmware/ble.py).
+    @Test
+    fun esp32AirBoard() {
+        val air = AirReading.decode(hex("40e201000004ad03fc02"))
+        assertEquals(AirState.NORMAL, air.state)
+        assertEquals(4, air.aqi)
+        assertEquals(941, air.eco2Ppm)
+        assertEquals(764, air.tvocPpb)
+
+        val warming = AirReading.decode(hex("5a8a0000010000000000"))
+        assertEquals(AirState.WARM_UP, warming.state)
+        assertEquals(null, warming.eco2Ppm)
+
+        val info = BoardInfo.decode(hex("010c4100"))
+        assertEquals(Protocol.BOARD_ESP32_AIR, info.board)
+        assertEquals(setOf(Sensor.RHT, Sensor.AIR), info.available)
+        assertEquals(false, info.isThunderboard)
+
+        val display = DisplayState.decode(hex("01031c8813"))
+        assertEquals(
+            setOf(DisplayPage.TEMPERATURE, DisplayPage.HUMIDITY, DisplayPage.AIR_QUALITY, DisplayPage.ECO2, DisplayPage.TVOC),
+            display.pages,
+        )
+        assertEquals(display.pages, display.pages.filter { it.isAvailableOn(info) }.toSet())
+    }
 }

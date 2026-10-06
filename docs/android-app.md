@@ -100,3 +100,20 @@ in `TabContent`.
 
 **Release build.** `./gradlew assembleRelease` needs a signing config; debug
 builds are fine for your own phone.
+
+## ESP32 Air boards
+
+The app also works with the ESP32 air monitor (board id `0x0C`, see
+[capabilities.md](capabilities.md#other-boards-esp32-air)). Its radar lists it
+as "ESP32 Air". Because that board has no IMU, button, LED or config, the app
+adapts:
+- **Live:** an air-quality card (rating + 1–5 bar), eCO2 and TVOC cards, then
+  temperature and humidity. No button or chip-temperature card.
+- **Charts:** eCO2 and TVOC are added.
+- **No Motion tab.** **Control** has only identify, reboot and factory reset.
+- **Settings:** only name and display pages, with the board's five pages.
+
+`BoardConnection` requires only Env, Info, Command and Name; Motion, Button,
+LED, Config, Display and Air are optional. The repository exposes `air`,
+`hasLed` and `hasConfig`, and the UI hides what a board doesn't have.
+

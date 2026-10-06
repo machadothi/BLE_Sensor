@@ -37,6 +37,9 @@ class BoardViewModel @Inject constructor(
     val env = repository.env
     val motion = repository.motion
     val button = repository.button
+    val air = repository.air
+    val hasLed = repository.hasLed
+    val hasConfig = repository.hasConfig
     val rssi = repository.rssi
     val history = repository.history
 
@@ -72,7 +75,7 @@ class BoardViewModel @Inject constructor(
             Command.CALIBRATE_GYRO -> "Gyro calibrated"
             Command.FACTORY_RESET -> "Factory defaults restored"
             Command.REBOOT -> "Board is rebooting"
-            Command.IDENTIFY -> "Look at the board: the LED is blinking"
+            Command.IDENTIFY -> if (info.value?.isThunderboard == false) "Look at the board: the display is flashing" else "Look at the board: the LED is blinking"
             Command.RESET_ORIENTATION -> "Orientation zeroed"
         },
     ) { repository.send(command) }

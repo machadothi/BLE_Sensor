@@ -2,6 +2,7 @@ package com.machadothi.blesensor.repository
 
 import android.bluetooth.BluetoothManager
 import android.content.Context
+import com.machadothi.blesensor.ble.AirReading
 import com.machadothi.blesensor.ble.BoardConfig
 import com.machadothi.blesensor.ble.BoardConnection
 import com.machadothi.blesensor.ble.BoardInfo
@@ -51,6 +52,9 @@ class BoardRepositoryImpl @Inject constructor(
     override val env = MutableStateFlow<Env?>(null)
     override val motion = MutableStateFlow<Motion?>(null)
     override val button = MutableStateFlow<ButtonState?>(null)
+    override val air = MutableStateFlow<AirReading?>(null)
+    override val hasLed = MutableStateFlow(false)
+    override val hasConfig = MutableStateFlow(false)
     override val rssi = MutableStateFlow<Int?>(null)
     override val history: StateFlow<History> get() = historyFlow
     private val historyFlow = MutableStateFlow(History())
@@ -103,6 +107,9 @@ class BoardRepositoryImpl @Inject constructor(
         env.value = null
         motion.value = null
         button.value = null
+        air.value = null
+        hasLed.value = false
+        hasConfig.value = false
         rssi.value = null
         historyBuffers.clear()
         historyFlow.value = History()
@@ -110,11 +117,16 @@ class BoardRepositoryImpl @Inject constructor(
 
     private suspend fun refreshAll(conn: BoardConnection) {
         info.value = BoardInfo.decode(conn.read(Protocol.INFO))
-        config.value = BoardConfig.decode(conn.read(Protocol.CONFIG))
-        led.value = LedState.decode(conn.read(Protocol.LED))
+        hasConfig.value = conn.has(Protocol.CONFIG)
+        hasLed.value = conn.has(Protocol.LED)
+        config.value = if (conn.has(Protocol.CONFIG)) BoardConfig.decode(conn.read(Protocol.CONFIG)) else null
+        led.value = if (conn.has(Protocol.LED)) LedState.decode(conn.read(Protocol.LED)) else null
         name.value = conn.read(Protocol.NAME).decodeToString()
-        button.value = ButtonState.decode(conn.read(Protocol.BUTTON))
+        button.value = if (conn.has(Protocol.BUTTON)) ButtonState.decode(conn.read(Protocol.BUTTON)) else null
         display.value = if (conn.has(Protocol.DISPLAY)) DisplayState.decode(conn.read(Protocol.DISPLAY)) else null
+        air.value = if (conn.has(Protocol.AIR)) runCatching { AirReading.decode(conn.read(Protocol.AIR)) }.getOrNull() else null
+        // The first Env notification can take a few seconds; read one now.
+        runCatching { Env.decode(conn.read(Protocol.ENV)) }.onSuccess { env.value = it }
     }
 
     private fun startSession(conn: BoardConnection) {
@@ -138,6 +150,14 @@ class BoardRepositoryImpl @Inject constructor(
             scope.launch {
                 conn.buttonNotifications.collect { bytes ->
                     runCatching { ButtonState.decode(bytes) }.onSuccess { button.value = it }
+                }
+            },
+            scope.launch {
+                conn.airNotifications.collect { bytes ->
+                    runCatching { AirReading.decode(bytes) }.onSuccess { sample ->
+                        air.value = sample
+                        historyBuffers.addAir(sample)
+                    }
                 }
             },
             scope.launch {
@@ -223,6 +243,8 @@ private class HistoryBuffers {
     private val hall = ArrayDeque<Float>()
     private val accel = ArrayDeque<Float>()
     private val gyro = ArrayDeque<Float>()
+    private val eco2 = ArrayDeque<Float>()
+    private val tvoc = ArrayDeque<Float>()
 
     private fun ArrayDeque<Float>.push(value: Float?, max: Int) {
         if (value == null) return
@@ -237,6 +259,11 @@ private class HistoryBuffers {
         hall.push(env.hallMt, ENV_HISTORY)
     }
 
+    @Synchronized fun addAir(air: AirReading) {
+        eco2.push(air.eco2Ppm?.toFloat(), ENV_HISTORY)
+        tvoc.push(air.tvocPpb?.toFloat(), ENV_HISTORY)
+    }
+
     @Synchronized fun addMotion(motion: Motion) {
         accel.push(motion.accelG.magnitude, MOTION_HISTORY)
         gyro.push(motion.gyroDps.magnitude, MOTION_HISTORY)
@@ -244,9 +271,10 @@ private class HistoryBuffers {
 
     @Synchronized fun snapshot() = History(
         temperature.toList(), humidity.toList(), lux.toList(), hall.toList(), accel.toList(), gyro.toList(),
+        eco2.toList(), tvoc.toList(),
     )
 
     @Synchronized fun clear() {
-        listOf(temperature, humidity, lux, hall, accel, gyro).forEach { it.clear() }
+        listOf(temperature, humidity, lux, hall, accel, gyro, eco2, tvoc).forEach { it.clear() }
     }
 }

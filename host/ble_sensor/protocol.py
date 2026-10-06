@@ -28,11 +28,13 @@ INFO_UUID = _uuid(0x06)
 COMMAND_UUID = _uuid(0x07)
 NAME_UUID = _uuid(0x08)
 DISPLAY_UUID = _uuid(0x09)
+AIR_UUID = _uuid(0x0A)       # ESP32 Air board only
 
 # Advertised manufacturer data: company id -> (board id, protocol version)
 ADV_COMPANY_ID = 0x02FF  # Silicon Laboratories
 
-BOARDS = {0x0A: "BRD4184A", 0x0B: "BRD4184B"}
+BOARDS = {0x0A: "BRD4184A", 0x0B: "BRD4184B", 0x0C: "ESP32 Air"}
+ESP32_AIR = "ESP32 Air"   # ESP32 + ENS160/AHT21 air monitor: no motion, button, LED or config
 
 # Sensor bits used by Config.sensor_mask and Info.available
 SENSOR_BITS = {
@@ -42,6 +44,7 @@ SENSOR_BITS = {
     "imu": 1 << 3,     # accelerometer + gyroscope
     "sound": 1 << 4,   # microphone (BRD4184B)
     "supply": 1 << 5,  # supply voltage
+    "air": 1 << 6,     # ENS160 air quality (ESP32 Air board)
 }
 
 LED_MODES = {"off": 0, "on": 1, "blink": 2}
@@ -50,8 +53,11 @@ LED_MODES = {"off": 0, "on": 1, "blink": 2}
 DISPLAY_PAGES = [
     "temperature", "humidity", "light", "uv", "magnetic",
     "sound", "supply", "chip-temperature", "orientation", "button",
+    "air", "eco2", "tvoc",   # bits 10-12: ESP32 Air board
 ]
-DISPLAY_PAGES_ALL = (1 << len(DISPLAY_PAGES)) - 1
+THUNDERBOARD_PAGES = DISPLAY_PAGES[:10]
+ESP32_AIR_PAGES = ["temperature", "humidity", "air", "eco2", "tvoc"]
+DISPLAY_PAGES_ALL = (1 << len(THUNDERBOARD_PAGES)) - 1   # Thunderboard
 DISPLAY_PAGE_TIME_S = (1.0, 60.0)   # allowed seconds per reading
 
 COMMANDS = {
@@ -277,3 +283,30 @@ class Info:
     def decode(cls, data: bytes) -> "Info":
         version, board_id, mask = cls.FORMAT.unpack(data[: cls.FORMAT.size])
         return cls(version, BOARDS.get(board_id, hex(board_id)), sensor_names(mask))
+
+
+def board_pages(board: str) -> list[str]:
+    """The display pages a board has ("--pages all")."""
+    return ESP32_AIR_PAGES if board == ESP32_AIR else THUNDERBOARD_PAGES
+
+
+AIR_STATES = {0: "normal", 1: "warm-up", 2: "start-up", 3: "invalid", 0xFF: "no sensor"}
+
+
+@dataclass
+class Air:
+    """ENS160 air quality (ESP32 Air board). Values are None unless state is "normal"."""
+    uptime_ms: int
+    state: str
+    aqi: Optional[int]          # 1 excellent ... 5 unhealthy (UBA)
+    eco2_ppm: Optional[int]
+    tvoc_ppb: Optional[int]
+
+    FORMAT = struct.Struct("<I B B H H")
+
+    @classmethod
+    def decode(cls, data: bytes) -> "Air":
+        uptime, state, aqi, eco2, tvoc = cls.FORMAT.unpack(data[: cls.FORMAT.size])
+        ok = state == 0
+        return cls(uptime, AIR_STATES.get(state, "no sensor"), aqi if ok and 1 <= aqi <= 5 else None,
+                   eco2 if ok else None, tvoc if ok else None)

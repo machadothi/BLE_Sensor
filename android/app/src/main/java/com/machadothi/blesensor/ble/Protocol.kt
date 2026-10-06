@@ -24,15 +24,19 @@ object Protocol {
     val COMMAND: UUID = uuid(0x07)
     val NAME: UUID = uuid(0x08)
     val DISPLAY: UUID = uuid(0x09)   // optional: firmware without it has no OLED support
+    val AIR: UUID = uuid(0x0A)       // optional: air-quality boards (ESP32 Air) only
 
     /** Advertised manufacturer data: company id, then board id and protocol version. */
     const val ADV_COMPANY_ID = 0x02FF
 
     const val NAME_MAX_BYTES = 20
 
+    const val BOARD_ESP32_AIR = "ESP32 Air"
+
     fun boardName(id: Int): String = when (id) {
         0x0A -> "BRD4184A"
         0x0B -> "BRD4184B"
+        0x0C -> BOARD_ESP32_AIR    // ESP32 + ENS160/AHT21 air monitor (~/git/air_quality_sensor)
         else -> "Unknown"
     }
 }
@@ -44,7 +48,8 @@ enum class Sensor(val bit: Int, val label: String) {
     HALL(1 shl 2, "Magnetic field"),
     IMU(1 shl 3, "Motion (IMU)"),
     SOUND(1 shl 4, "Sound"),
-    SUPPLY(1 shl 5, "Supply voltage");
+    SUPPLY(1 shl 5, "Supply voltage"),
+    AIR(1 shl 6, "Air quality (ENS160)");
 
     companion object {
         fun fromMask(mask: Int): Set<Sensor> = entries.filter { mask and it.bit != 0 }.toSet()
@@ -63,7 +68,11 @@ enum class DisplayPage(val label: String) {
     SUPPLY("Supply voltage"),
     CHIP_TEMPERATURE("Chip temperature"),
     ORIENTATION("Orientation (X/Y/Z)"),
-    BUTTON("Button presses");
+    BUTTON("Button presses"),
+    // Bits 10-12: the ESP32 Air board's pages.
+    AIR_QUALITY("Air quality"),
+    ECO2("CO2 (eCO2)"),
+    TVOC("TVOC");
 
     val bit: Int get() = 1 shl ordinal
 
@@ -76,7 +85,8 @@ enum class DisplayPage(val label: String) {
         SOUND -> Sensor.SOUND in info.available
         SUPPLY -> Sensor.SUPPLY in info.available
         ORIENTATION -> Sensor.IMU in info.available
-        CHIP_TEMPERATURE, BUTTON -> true
+        CHIP_TEMPERATURE, BUTTON -> info.isThunderboard
+        AIR_QUALITY, ECO2, TVOC -> Sensor.AIR in info.available
     }
 }
 
@@ -267,10 +277,47 @@ data class BoardConfig(
 }
 
 data class BoardInfo(val protocolVersion: Int, val board: String, val available: Set<Sensor>) {
+    /** Thunderboard EFR32BG22 (BRD4184A/B), as opposed to the ESP32 Air board. */
+    val isThunderboard: Boolean get() = board.startsWith("BRD")
+
     companion object {
         fun decode(bytes: ByteArray): BoardInfo {
             val b = le(bytes)
             return BoardInfo(b.u8(), Protocol.boardName(b.u8()), Sensor.fromMask(b.u8()))
+        }
+    }
+}
+
+/** ENS160 state, from the Air characteristic. Readings count only when NORMAL. */
+enum class AirState(val label: String) {
+    NORMAL("Normal"), WARM_UP("Warming up"), START_UP("First start-up"), INVALID("Invalid"), NO_SENSOR("No sensor");
+
+    companion object {
+        fun fromCode(code: Int) = when (code) {
+            0 -> NORMAL
+            1 -> WARM_UP
+            2 -> START_UP
+            3 -> INVALID
+            else -> NO_SENSOR
+        }
+    }
+}
+
+/** Air quality from the ENS160 (ESP32 Air board). Values are null unless the state is NORMAL. */
+data class AirReading(val uptimeMs: Long, val state: AirState, val aqi: Int?, val eco2Ppm: Int?, val tvocPpb: Int?) {
+    companion object {
+        const val SIZE = 10
+
+        fun decode(bytes: ByteArray): AirReading {
+            require(bytes.size >= SIZE) { "Air needs $SIZE bytes, got ${bytes.size}" }
+            val b = le(bytes)
+            val uptime = b.u32()
+            val state = AirState.fromCode(b.u8())
+            val aqi = b.u8()
+            val eco2 = b.u16()
+            val tvoc = b.u16()
+            val ok = state == AirState.NORMAL
+            return AirReading(uptime, state, aqi.takeIf { ok && it in 1..5 }, eco2.takeIf { ok }, tvoc.takeIf { ok })
         }
     }
 }

@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Co2
 import androidx.compose.material.icons.rounded.Explore
+import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Thermostat
@@ -58,7 +60,7 @@ private data class Series(
 fun ChartsTab(viewModel: BoardViewModel) {
     val history by viewModel.history.collectAsStateWithLifecycle()
     val config by viewModel.config.collectAsStateWithLifecycle()
-    val envMs = config?.envPeriodMs ?: 1000
+    val envMs = config?.envPeriodMs ?: 2000   // the ESP32 Air board sends every 2 s
     val motionMs = config?.motionPeriodMs ?: 50
 
     val series = listOf(
@@ -66,6 +68,8 @@ fun ChartsTab(viewModel: BoardViewModel) {
         Series("Humidity", Icons.Rounded.WaterDrop, Sky, "%", history.humidityPct, "%.1f", envMs),
         Series("Light", Icons.Rounded.LightMode, Amber, "lx", history.lux, "%.0f", envMs),
         Series("Magnetic field", Icons.Rounded.Explore, Teal, "mT", history.hallMt, "%.3f", envMs),
+        Series("eCO2", Icons.Rounded.Co2, Sky, "ppm", history.eco2Ppm, "%.0f", envMs),
+        Series("TVOC", Icons.Rounded.Science, Violet, "ppb", history.tvocPpb, "%.0f", envMs),
         Series("Acceleration |a|", Icons.Rounded.Speed, Violet, "g", history.accelG, "%.3f", motionMs),
         Series("Rotation |ω|", Icons.Rounded._3dRotation, Lime, "°/s", history.gyroDps, "%.1f", motionMs),
     ).filter { it.values.isNotEmpty() }

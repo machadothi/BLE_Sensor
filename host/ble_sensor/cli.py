@@ -10,7 +10,10 @@ from dataclasses import fields
 from typing import Awaitable, Callable, Optional
 
 from .client import BleSensor
-from .protocol import COMMANDS, DISPLAY_PAGE_TIME_S, DISPLAY_PAGES, LED_MODES, LIMITS, SENSOR_BITS, Button, Config, Env, Motion
+from .protocol import (
+    COMMANDS, DISPLAY_PAGE_TIME_S, DISPLAY_PAGES, ESP32_AIR, LED_MODES, LIMITS, SENSOR_BITS, Air, Button, Config, Env,
+    Motion, board_pages,
+)
 
 STREAMS = ["env", "motion", "button"]
 
@@ -58,24 +61,39 @@ def print_config(config: Config) -> None:
 # Each takes the connected board and the parsed arguments.
 
 
+def print_air(air: Air) -> None:
+    if air.state != "normal":
+        print(f"air: {air.state}")
+        return
+    names = ["", "excellent", "good", "moderate", "poor", "unhealthy"]
+    print(f"air: AQI {air.aqi} ({names[air.aqi or 0]})  eCO2={air.eco2_ppm} ppm  TVOC={air.tvoc_ppb} ppb")
+
+
 async def cmd_info(board: BleSensor, args: argparse.Namespace) -> None:
     info = await board.read_info()
-    led = await board.read_led()
     print(f"board:     {info.board}")
     print(f"protocol:  v{info.protocol_version}")
     print(f"sensors:   {', '.join(info.available)}")
+    if info.board == ESP32_AIR:   # no config or LED on this board
+        return
+    led = await board.read_led()
     print("config:")
     print_config(await board.read_config())
     print(f"led:       {led.mode} (on {led.on_ms} ms / off {led.off_ms} ms)")
 
 
 async def cmd_read(board: BleSensor, args: argparse.Namespace) -> None:
+    info = await board.read_info()
     print_env(await board.read_env())
-    try:
-        print_motion(await board.read_motion())
-    except struct.error:   # empty value: IMU off or no sample yet
-        print("motion: n/a")
-    print_button(await board.read_button())
+    if "air" in info.available:
+        print_air(await board.read_air())
+    if "imu" in info.available:
+        try:
+            print_motion(await board.read_motion())
+        except struct.error:   # empty value: IMU off or no sample yet
+            print("motion: n/a")
+    if info.board != ESP32_AIR:
+        print_button(await board.read_button())
 
 
 async def cmd_monitor(board: BleSensor, args: argparse.Namespace) -> None:
@@ -119,9 +137,10 @@ async def cmd_config(board: BleSensor, args: argparse.Namespace) -> None:
 
 
 async def cmd_display(board: BleSensor, args: argparse.Namespace) -> None:
+    available = board_pages((await board.read_info()).board)
     pages = None
     if args.pages is not None:
-        pages = DISPLAY_PAGES if args.pages == "all" else [] if args.pages == "none" else args.pages.split(",")
+        pages = available if args.pages == "all" else [] if args.pages == "none" else args.pages.split(",")
     if pages is not None or args.page_time is not None:
         try:
             await board.set_display(pages=pages, page_time_s=args.page_time)
@@ -130,7 +149,7 @@ async def cmd_display(board: BleSensor, args: argparse.Namespace) -> None:
     display = await board.read_display()
     print(f"display:  {'connected' if display.present else 'not connected'}")
     print(f"each reading shown for {display.page_time_s:g} s")
-    for name in DISPLAY_PAGES:
+    for name in available:
         print(f"  [{'x' if name in display.pages else ' '}] {name}")
 
 

@@ -10,11 +10,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ShowChart
+import androidx.compose.material.icons.rounded.Air
 import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.Co2
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.Tv
@@ -56,6 +59,9 @@ private val DisplayPage.icon: ImageVector
         DisplayPage.CHIP_TEMPERATURE -> Icons.Rounded.Memory
         DisplayPage.ORIENTATION -> Icons.Rounded._3dRotation
         DisplayPage.BUTTON -> Icons.Rounded.TouchApp
+        DisplayPage.AIR_QUALITY -> Icons.Rounded.Air
+        DisplayPage.ECO2 -> Icons.Rounded.Co2
+        DisplayPage.TVOC -> Icons.Rounded.Science
     }
 
 // Half seconds up to 10 s, whole seconds above: readable values on the slider.
@@ -79,6 +85,10 @@ fun DisplayCard(
     onPageMsChanged: (Int) -> Unit,
 ) {
     val available = DisplayPage.entries.filter { info == null || it.isAvailableOn(info) }.toSet()
+    // Thunderboards list all their pages (absent sensors greyed out); the ESP32 Air board only its own.
+    val airPages = setOf(DisplayPage.AIR_QUALITY, DisplayPage.ECO2, DisplayPage.TVOC)
+    val thunderboard = info?.isThunderboard != false
+    val listed = DisplayPage.entries.filter { if (thunderboard) it !in airPages else it in available }
     // Follows the slider while dragging; sent to the board when released.
     var pageMs by remember(display.pageMs) { mutableIntStateOf(display.pageMs) }
 
@@ -87,12 +97,19 @@ fun DisplayCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CardHeader(Icons.Rounded.Tv, "Display", Lime, Modifier.weight(1f))
                 TextButton(onClick = { onPagesChanged(display.pages + available) }, enabled = display.present) { Text("All") }
-                TextButton(onClick = { onPagesChanged(emptySet()) }, enabled = display.present) { Text("None") }
+                // The ESP32 Air board needs at least one page.
+                if (thunderboard) {
+                    TextButton(onClick = { onPagesChanged(emptySet()) }, enabled = display.present) { Text("None") }
+                }
             }
             AnimatedVisibility(visible = !display.present) {
                 Text(
-                    "No display found when the board started. Connect an SSD1306 OLED to EXP pins 15 (SCL), " +
-                        "16 (SDA), 20 (3.3 V) and 1 (GND), then reboot the board.",
+                    if (thunderboard) {
+                        "No display found when the board started. Connect an SSD1306 OLED to EXP pins 15 (SCL), " +
+                            "16 (SDA), 20 (3.3 V) and 1 (GND), then reboot the board."
+                    } else {
+                        "No display found when the board started. Check the OLED's wiring (GPIO21 SDA, GPIO22 SCL), then reboot the board."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 6.dp),
@@ -113,7 +130,7 @@ fun DisplayCard(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            DisplayPage.entries.forEach { page ->
+            listed.forEach { page ->
                 val canShow = page in available
                 val enabled = display.present && canShow
                 Row(Modifier.fillMaxWidth().padding(vertical = 1.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -133,9 +150,10 @@ fun DisplayCard(
                             Text("Not on this board", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
+                    val lastOne = !thunderboard && display.pages.count { it in available } == 1 && page in display.pages
                     AppSwitch(
                         checked = canShow && page in display.pages,
-                        enabled = enabled,
+                        enabled = enabled && !lastOne,
                         onCheckedChange = { on -> onPagesChanged(if (on) display.pages + page else display.pages - page) },
                     )
                 }

@@ -62,41 +62,32 @@ fun SettingsTab(viewModel: BoardViewModel) {
     val info by viewModel.info.collectAsStateWithLifecycle()
     val savedName by viewModel.name.collectAsStateWithLifecycle()
     val display by viewModel.display.collectAsStateWithLifecycle()
-    val current = saved ?: return
+    val current = saved
+    if (current == null) {
+        // Boards without a Config characteristic (ESP32 Air): name and display only.
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            NameCard(savedName, viewModel::setName)
+            display?.let { state ->
+                DisplayCard(state, info, onPagesChanged = viewModel::setDisplayPages, onPageMsChanged = viewModel::setDisplayPageMs)
+            }
+        }
+        return
+    }
 
     // Edits are a draft until "Apply"; a new board config resets the draft.
     var draft by remember(current) { mutableStateOf(current) }
-    var nameDraft by remember(savedName) { mutableStateOf(savedName.orEmpty()) }
     val available = info?.available ?: emptySet()
     val changes = countChanges(current, draft)
-    val nameBytes = nameDraft.trim().encodeToByteArray().size
 
     Box(Modifier.fillMaxSize()) {
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).padding(bottom = 88.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            GlowCard(Modifier.fillMaxWidth(), accent = Violet) {
-                Column {
-                    CardHeader(Icons.Rounded.Badge, "Name", Violet)
-                    Spacer(Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedTextField(
-                            value = nameDraft,
-                            onValueChange = { nameDraft = it },
-                            singleLine = true,
-                            isError = nameBytes !in 1..Protocol.NAME_MAX_BYTES,
-                            supportingText = { Text("$nameBytes / ${Protocol.NAME_MAX_BYTES} bytes · advertised after disconnect") },
-                            modifier = Modifier.weight(1f),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        FilledTonalButton(
-                            onClick = { viewModel.setName(nameDraft) },
-                            enabled = nameDraft.trim() != savedName && nameBytes in 1..Protocol.NAME_MAX_BYTES,
-                        ) { Text("Save") }
-                    }
-                }
-            }
+            NameCard(savedName, viewModel::setName)
 
             GlowCard(Modifier.fillMaxWidth(), accent = Teal) {
                 Column {
@@ -222,3 +213,31 @@ private fun countChanges(a: BoardConfig, b: BoardConfig): Int = listOf(
     a.advIntervalMs != b.advIntervalMs,
     a.hallThresholdMt != b.hallThresholdMt,
 ).count { it }
+
+/** The board's Bluetooth name; saved on the board, advertised after the next disconnect. */
+@Composable
+private fun NameCard(savedName: String?, onSave: (String) -> Unit) {
+    var nameDraft by remember(savedName) { mutableStateOf(savedName.orEmpty()) }
+    val nameBytes = nameDraft.trim().encodeToByteArray().size
+    GlowCard(Modifier.fillMaxWidth(), accent = Violet) {
+        Column {
+            CardHeader(Icons.Rounded.Badge, "Name", Violet)
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = nameDraft,
+                    onValueChange = { nameDraft = it },
+                    singleLine = true,
+                    isError = nameBytes !in 1..Protocol.NAME_MAX_BYTES,
+                    supportingText = { Text("$nameBytes / ${Protocol.NAME_MAX_BYTES} bytes · advertised after disconnect") },
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(8.dp))
+                FilledTonalButton(
+                    onClick = { onSave(nameDraft) },
+                    enabled = nameDraft.trim() != savedName && nameBytes in 1..Protocol.NAME_MAX_BYTES,
+                ) { Text("Save") }
+            }
+        }
+    }
+}

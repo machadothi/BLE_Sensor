@@ -29,21 +29,23 @@ class BoardConnection(context: Context) : BleManager(context) {
     private val envFlow = notifications()
     private val motionFlow = notifications()
     private val buttonFlow = notifications()
+    private val airFlow = notifications()
 
     val envNotifications: SharedFlow<ByteArray> = envFlow
     val motionNotifications: SharedFlow<ByteArray> = motionFlow
     val buttonNotifications: SharedFlow<ByteArray> = buttonFlow
+    val airNotifications: SharedFlow<ByteArray> = airFlow
 
     override fun isRequiredServiceSupported(gatt: BluetoothGatt): Boolean {
         val service = gatt.getService(Protocol.SERVICE) ?: return false
-        listOf(
-            Protocol.ENV, Protocol.MOTION, Protocol.BUTTON, Protocol.LED,
-            Protocol.CONFIG, Protocol.INFO, Protocol.COMMAND, Protocol.NAME,
-        ).forEach { uuid ->
+        // Every board has these.
+        listOf(Protocol.ENV, Protocol.INFO, Protocol.COMMAND, Protocol.NAME).forEach { uuid ->
             characteristics[uuid] = service.getCharacteristic(uuid) ?: return false
         }
-        // Optional: older firmware has no display support.
-        service.getCharacteristic(Protocol.DISPLAY)?.let { characteristics[Protocol.DISPLAY] = it }
+        // Thunderboard only (motion, button, LED, config), OLED support, air quality (ESP32 Air).
+        listOf(Protocol.MOTION, Protocol.BUTTON, Protocol.LED, Protocol.CONFIG, Protocol.DISPLAY, Protocol.AIR).forEach { uuid ->
+            service.getCharacteristic(uuid)?.let { characteristics[uuid] = it }
+        }
         return true
     }
 
@@ -54,10 +56,11 @@ class BoardConnection(context: Context) : BleManager(context) {
         subscribe(Protocol.ENV, envFlow)
         subscribe(Protocol.MOTION, motionFlow)
         subscribe(Protocol.BUTTON, buttonFlow)
+        subscribe(Protocol.AIR, airFlow)
     }
 
     private fun subscribe(uuid: UUID, flow: MutableSharedFlow<ByteArray>) {
-        val characteristic = characteristics[uuid]
+        val characteristic = characteristics[uuid] ?: return   // this board doesn't have it
         setNotificationCallback(characteristic).with { _, data -> data.value?.let { flow.tryEmit(it) } }
         enableNotifications(characteristic).enqueue()
     }

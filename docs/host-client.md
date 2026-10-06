@@ -65,6 +65,11 @@ ble-sensor -a 58:8E:81:66:B0:DF led on
 | `factory-reset` | `ble-sensor factory-reset` | Default config and name |
 | `reboot` | `ble-sensor reboot` | Restart the board |
 
+**ESP32 Air boards** (see [capabilities.md](capabilities.md#other-boards-esp32-air))
+work with `scan`, `info`, `read` (adds AQI, eCO2 and TVOC), `monitor env`,
+`name`, `display` (`--pages all` means that board's five pages), `identify`,
+`reboot` and `factory-reset`. They have no LED, config, motion or button.
+
 `ble-sensor config --help` shows each option's allowed range. An out-of-range
 value fails with `BleakGATTProtocolError ... Value Not Allowed`, and the board
 keeps its previous setting.
@@ -106,6 +111,7 @@ API summary (all methods are `async`):
 | `read_led()` / `set_led(mode, on_ms, off_ms)` | LED state / change it |
 | `read_config()` / `set_config(sensors=None, **fields)` | `Config(sensor_mask, env_period_ms, motion_period_ms, tx_power_dbm, adv_interval_ms, hall_threshold_mt)`; `set_config` changes only the fields passed |
 | `read_name()` / `set_name(name)` | device name |
+| `read_air()` | `Air(uptime_ms, state, aqi, eco2_ppm, tvoc_ppb)`: ESP32 Air board only |
 | `read_display()` / `set_display(pages=None, page_time_s=None)` | `Display(present, pages, page_time_s)`: the OLED, which readings it shows (names from `protocol.DISPLAY_PAGES`) and seconds per reading; `set_display` changes only what you pass |
 | `command(name)` | `"calibrate"`, `"factory-reset"`, `"reboot"`, `"identify"`, `"reset-orientation"` |
 | `on_env(cb)` / `on_motion(cb)` / `on_button(cb)` | subscribe; `cb` gets the decoded object, and may be a plain or `async` function |
