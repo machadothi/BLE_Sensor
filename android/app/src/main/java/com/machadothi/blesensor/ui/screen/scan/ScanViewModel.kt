@@ -47,7 +47,9 @@ class ScanViewModel @Inject constructor(private val scanner: BoardScanner) : Vie
                         else e.message ?: "Scan failed"
                         _state.value = _state.value.copy(scanning = false, error = message)
                     }
-                    .collect { boards -> _state.value = _state.value.copy(boards = boards.sortedByDescending { it.rssi }) }
+                    // Order of discovery (the scanner keeps it), not signal strength: a list
+                    // that reshuffles on every RSSI change is hard to tap.
+                    .collect { boards -> _state.value = _state.value.copy(boards = boards) }
             }
             delay(SCAN_DURATION_MS)
             collector.cancel()
