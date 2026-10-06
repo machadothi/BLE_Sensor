@@ -40,6 +40,8 @@ class BoardViewModel @Inject constructor(
     val air = repository.air
     val system = repository.system
     val calibration = repository.calibration
+    val boardTime = repository.boardTime
+    val wifi = repository.wifi
     val hasLed = repository.hasLed
     val hasConfig = repository.hasConfig
     val rssi = repository.rssi
@@ -71,6 +73,17 @@ class BoardViewModel @Inject constructor(
 
     fun setTemperatureOffset(offsetC: Float) =
         run("Temperature offset saved on the board") { repository.setTemperatureOffset(offsetC) }
+
+    fun scanWifi() = run("Scanning…", quiet = true) { repository.scanWifi() }
+
+    fun connectWifi(ssid: String, password: String) =
+        run("Connecting the board to $ssid") { repository.connectWifi(ssid, password) }
+
+    fun forgetWifi() = run("Back to the board's configured network") { repository.forgetWifi() }
+
+    fun setMqtt(enabled: Boolean) = run(if (enabled) "MQTT on" else "MQTT off: Home Assistant shows the board as unavailable") {
+        repository.setMqtt(enabled)
+    }
 
     fun setAutoCalibration(auto: Boolean) = run("Saved", quiet = true) { repository.controlCalibration(auto, 0) }
 

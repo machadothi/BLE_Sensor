@@ -27,6 +27,8 @@ object Protocol {
     val AIR: UUID = uuid(0x0A)       // optional: air-quality boards (ESP32 Air) only
     val SYSTEM: UUID = uuid(0x0B)    // optional: board status (ESP32 Air) only
     val CALIBRATION: UUID = uuid(0x0C) // optional: i16 temperature offset, °C × 100 (ESP32 Air) only
+    val TIME: UUID = uuid(0x0D)      // optional: the board's clock (ESP32 Air) only
+    val WIFI: UUID = uuid(0x0E)      // optional: Wi-Fi network and scan (ESP32 Air) only
     const val OFFSET_MAX_C = 10f
 
     /** Advertised manufacturer data: company id, then board id and protocol version. */
@@ -82,7 +84,8 @@ enum class DisplayPage(val label: String) {
     TVOC("TVOC"),
     DEW_POINT("Dew point"),
     SENSOR_DETAILS("Air sensor details"),
-    SYSTEM("System (Wi-Fi, uptime)");
+    SYSTEM("System (Wi-Fi, uptime)"),
+    CLOCK("Clock");
 
     val bit: Int get() = 1 shl ordinal
 
@@ -96,7 +99,7 @@ enum class DisplayPage(val label: String) {
         SUPPLY -> Sensor.SUPPLY in info.available
         ORIENTATION -> Sensor.IMU in info.available
         CHIP_TEMPERATURE, BUTTON -> info.isThunderboard
-        AIR_QUALITY, ECO2, TVOC, DEW_POINT, SENSOR_DETAILS, SYSTEM -> Sensor.AIR in info.available
+        AIR_QUALITY, ECO2, TVOC, DEW_POINT, SENSOR_DETAILS, SYSTEM, CLOCK -> Sensor.AIR in info.available
     }
 }
 
@@ -106,22 +109,32 @@ enum class DisplayPage(val label: String) {
  * [rotated]: turned 180°; null when the board can't rotate it from the app
  * (5-byte value, the Thunderboard). Boards that can send a 6th byte: flags, bit 0 = rotated.
  */
-data class DisplayState(val present: Boolean, val pages: Set<DisplayPage>, val pageMs: Int, val rotated: Boolean? = null) {
-    fun encode(): ByteArray = le(ByteArray(if (rotated == null) 5 else 6)).apply {
+data class DisplayState(
+    val present: Boolean,
+    val pages: Set<DisplayPage>,
+    val pageMs: Int,
+    val rotated: Boolean? = null,
+    /** Bytes the board uses: 5 (Thunderboard), 6 (+ flags), 7 (+ page bits 16-23). */
+    val size: Int = if (rotated == null) 5 else 6,
+) {
+    fun encode(): ByteArray = le(ByteArray(size)).apply {
+        val mask = pages.fold(0) { m, page -> m or page.bit }
         put(if (present) 1 else 0)
-        putShort(pages.fold(0) { mask, page -> mask or page.bit }.toShort())
+        putShort((mask and 0xFFFF).toShort())
         putShort(pageMs.toShort())
-        if (rotated != null) put(if (rotated) 1 else 0)
+        if (size >= 6) put(if (rotated == true) 1 else 0)
+        if (size >= 7) put((mask shr 16).toByte())
     }.array()
 
     companion object {
         fun decode(bytes: ByteArray): DisplayState {
             val b = le(bytes)
             val present = b.u8() != 0
-            val mask = b.u16()
+            var mask = b.u16()
             val pageMs = b.u16()
             val rotated = if (bytes.size >= 6) b.u8() and 1 != 0 else null
-            return DisplayState(present, DisplayPage.entries.filter { mask and it.bit != 0 }.toSet(), pageMs, rotated)
+            if (bytes.size >= 7) mask = mask or (b.u8() shl 16)
+            return DisplayState(present, DisplayPage.entries.filter { mask and it.bit != 0 }.toSet(), pageMs, rotated, minOf(bytes.size, 7))
         }
     }
 }
@@ -531,6 +544,104 @@ data class CalibrationStatus(
                 else -> null
             }
             return CalibrationStatus(offset, auto, state, elapsed, cooldown, warm, now, result, age.takeIf { it != 0xFFFF_FFFFL }, reason)
+        }
+    }
+}
+
+/** The board's clock (ESP32 Air), Time characteristic: 12 bytes read, 7 written. */
+data class BoardTime(
+    /** Unix time, UTC; null if the board doesn't know the time yet. */
+    val unixUtc: Long?,
+    val offsetMin: Int,
+    val dstRule: Int,
+    val source: String,
+    /** Offset in effect now (summer time included). */
+    val currentOffsetMin: Int,
+) {
+    companion object {
+        const val DST_NONE = 0
+        const val DST_EU = 1
+        const val DST_US = 2
+
+        fun decode(bytes: ByteArray): BoardTime {
+            val b = le(bytes)
+            val unix = b.u32()
+            val offset = b.i16()
+            val dst = b.u8()
+            val source = when (b.u8()) {
+                1 -> "internet"
+                2 -> "phone"
+                else -> "unknown"
+            }
+            return BoardTime(unix.takeIf { it != 0L }, offset, dst, source, b.i16())
+        }
+
+        /** The phone's time and zone, as the board wants them. */
+        fun encodeFromPhone(nowMs: Long, zone: java.util.TimeZone): ByteArray {
+            val rule = when {
+                !zone.useDaylightTime() -> DST_NONE
+                zone.id.startsWith("Europe/") -> DST_EU
+                zone.id.startsWith("America/") || zone.id.startsWith("US/") -> DST_US
+                else -> DST_NONE
+            }
+            // Without a known rule, send the offset in effect now (right until the next change).
+            val offsetMin = (if (rule == DST_NONE) zone.getOffset(nowMs) else zone.rawOffset) / 60_000
+            return le(ByteArray(7)).apply {
+                putInt((nowMs / 1000).toInt())
+                putShort(offsetMin.toShort())
+                put(rule.toByte())
+            }.array()
+        }
+    }
+}
+
+/** The board's Wi-Fi (ESP32 Air): connection and scan results. */
+data class WifiStatus(
+    val state: State,
+    val failure: String?,
+    val rssi: Int?,
+    val ip: String?,
+    val ssid: String,
+    val scanning: Boolean,
+    val mqttEnabled: Boolean,
+    val mqttConnected: Boolean,
+    val networks: List<Pair<String, Int>>,
+) {
+    enum class State { IDLE, CONNECTING, CONNECTED, FAILED }
+
+    companion object {
+        fun decode(bytes: ByteArray): WifiStatus {
+            val b = le(bytes)
+            val state = State.entries.getOrElse(b.u8()) { State.IDLE }
+            val reason = when (b.u8()) {
+                1 -> "wrong password"
+                2 -> "network not found"
+                3 -> "couldn't connect"
+                else -> null
+            }
+            val rssi = b.get().toInt()
+            val ip = (0 until 4).map { b.u8() }
+            val ssid = ByteArray(b.u8()).also { b.get(it) }.decodeToString()
+            val scanning = b.u8() != 0
+            val mqtt = b.u8()
+            val networks = (0 until b.u8()).map {
+                val name = ByteArray(b.u8()).also { b.get(it) }.decodeToString()
+                name to b.get().toInt()
+            }
+            return WifiStatus(
+                state, reason.takeIf { state == State.FAILED }, rssi.takeIf { it != 0 },
+                ip.takeIf { it.any { p -> p != 0 } }?.joinToString("."), ssid, scanning,
+                mqtt and 1 != 0, mqtt and 2 != 0, networks,
+            )
+        }
+
+        fun scan() = byteArrayOf(1)
+        fun forget() = byteArrayOf(3)
+        fun mqtt(on: Boolean) = byteArrayOf(if (on) 4 else 5)
+        fun connect(ssid: String, password: String): ByteArray {
+            val s = ssid.encodeToByteArray()
+            val p = password.encodeToByteArray()
+            return byteArrayOf(2, s.size.toByte()) + s + byteArrayOf(p.size.toByte()) + p
         }
     }
 }

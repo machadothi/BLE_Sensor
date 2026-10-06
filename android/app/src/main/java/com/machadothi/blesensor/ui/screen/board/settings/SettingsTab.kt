@@ -1,5 +1,12 @@
 package com.machadothi.blesensor.ui.screen.board.settings
 
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.rounded.Wifi
+import com.machadothi.blesensor.ble.BoardTime
+import com.machadothi.blesensor.ble.WifiStatus
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.animation.AnimatedContent
 import com.machadothi.blesensor.ble.CalibrationStatus
@@ -75,6 +82,17 @@ fun SettingsTab(viewModel: BoardViewModel) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             NameCard(savedName, viewModel::setName)
+            val wifi by viewModel.wifi.collectAsStateWithLifecycle()
+            val boardTime by viewModel.boardTime.collectAsStateWithLifecycle()
+            wifi?.let {
+                WifiCard(
+                    it, boardTime,
+                    onScan = viewModel::scanWifi,
+                    onConnect = viewModel::connectWifi,
+                    onForget = viewModel::forgetWifi,
+                    onMqtt = viewModel::setMqtt,
+                )
+            }
             val calibration by viewModel.calibration.collectAsStateWithLifecycle()
             val env by viewModel.env.collectAsStateWithLifecycle()
             calibration?.let {
@@ -300,7 +318,7 @@ private fun CalibrationCard(
                 Text("Measure the offset automatically", style = MaterialTheme.typography.titleSmall)
                 Text(
                     "The board puts its air sensor to sleep, waits until the temperature stops falling " +
-                        "(5–${status.cooldownS / 60} min) and uses the drop as the offset. No air readings meanwhile, " +
+                        "(10–${status.cooldownS / 60} min) and uses the drop as the offset. No air readings meanwhile, " +
                         "then 3 min warm-up.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -327,7 +345,7 @@ private fun CalibrationCard(
                         Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             FilledTonalButton(onClick = onStart) { Text("Measure now") }
                             Spacer(Modifier.weight(1f))
-                            Text("Daily", style = MaterialTheme.typography.bodyMedium)
+                            Text("Nightly (03:00)", style = MaterialTheme.typography.bodyMedium)
                             Spacer(Modifier.width(8.dp))
                             AppSwitch(checked = status.auto == true, onCheckedChange = onAuto)
                         }
@@ -361,4 +379,116 @@ private fun formatAge(seconds: Long): String = when {
     seconds < 3600 -> "${seconds / 60} min"
     seconds < 86_400 -> "${seconds / 3600} h"
     else -> "${seconds / 86_400} d"
+}
+
+/**
+ * Wi-Fi, clock and MQTT of boards that have them (ESP32 Air): which network, a
+ * scan to pick another one, the board's time (the app sets it from the phone on
+ * every connect; with Wi-Fi it also comes from the internet), and MQTT on/off.
+ */
+@Composable
+private fun WifiCard(
+    wifi: WifiStatus,
+    time: BoardTime?,
+    onScan: () -> Unit,
+    onConnect: (String, String) -> Unit,
+    onForget: () -> Unit,
+    onMqtt: (Boolean) -> Unit,
+) {
+    var picking by rememberSaveable { mutableStateOf(false) }
+    var chosen by rememberSaveable { mutableStateOf<String?>(null) }
+    GlowCard(Modifier.fillMaxWidth(), accent = Sky) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            CardHeader(Icons.Rounded.Wifi, "Wi-Fi, time & MQTT", Sky)
+            val line = when (wifi.state) {
+                WifiStatus.State.CONNECTED -> "${wifi.ssid} · ${wifi.rssi ?: "—"} dBm · ${wifi.ip ?: ""}"
+                WifiStatus.State.CONNECTING -> "Connecting to ${wifi.ssid}…"
+                WifiStatus.State.FAILED -> "${wifi.ssid}: ${wifi.failure ?: "not connected"}"
+                WifiStatus.State.IDLE -> "Not connected"
+            }
+            Text(line, style = MaterialTheme.typography.bodyLarge)
+            if (time?.unixUtc != null) {
+                val local = java.time.Instant.ofEpochSecond(time.unixUtc)
+                    .atOffset(java.time.ZoneOffset.ofTotalSeconds(time.currentOffsetMin * 60))
+                Text(
+                    "Board time %02d:%02d · from the %s".format(local.hour, local.minute, time.source),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                FilledTonalButton(onClick = { picking = true; onScan() }) { Text("Choose network") }
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = onForget) { Text("Use configured") }
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("MQTT", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        when {
+                            !wifi.mqttEnabled -> "Off: no readings to Home Assistant over MQTT"
+                            wifi.mqttConnected -> "Connected to the broker"
+                            else -> "On, not connected"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                AppSwitch(checked = wifi.mqttEnabled, onCheckedChange = onMqtt)
+            }
+        }
+    }
+
+    if (picking) {
+        AlertDialog(
+            onDismissRequest = { picking = false },
+            title = { Text("Choose a network") },
+            text = {
+                Column {
+                    if (wifi.scanning) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("The board is scanning…")
+                        }
+                    }
+                    wifi.networks.forEach { (name, rssi) ->
+                        TextButton(onClick = { chosen = name; picking = false }, modifier = Modifier.fillMaxWidth()) {
+                            Text(name, modifier = Modifier.weight(1f))
+                            Text("$rssi dBm", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                    if (!wifi.scanning && wifi.networks.isEmpty()) Text("No networks found")
+                }
+            },
+            confirmButton = { TextButton(onClick = onScan) { Text("Scan again") } },
+            dismissButton = { TextButton(onClick = { picking = false }) { Text("Close") } },
+        )
+    }
+    chosen?.let { ssid ->
+        var password by rememberSaveable { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { chosen = null },
+            title = { Text(ssid) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = { Text("Password") },
+                        singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    )
+                    Text(
+                        "Sent to the board over Bluetooth and stored there. The Bluetooth link isn't encrypted.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+            },
+            confirmButton = { TextButton(onClick = { onConnect(ssid, password); chosen = null }) { Text("Connect") } },
+            dismissButton = { TextButton(onClick = { chosen = null }) { Text("Cancel") } },
+        )
+    }
 }

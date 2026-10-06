@@ -6,6 +6,8 @@ import com.machadothi.blesensor.ble.AirReading
 import com.machadothi.blesensor.ble.BoardConfig
 import com.machadothi.blesensor.ble.BoardConnection
 import com.machadothi.blesensor.ble.BoardInfo
+import com.machadothi.blesensor.ble.BoardTime
+import com.machadothi.blesensor.ble.WifiStatus
 import com.machadothi.blesensor.ble.CalibrationStatus
 import com.machadothi.blesensor.ble.ButtonState
 import com.machadothi.blesensor.ble.Command
@@ -57,6 +59,8 @@ class BoardRepositoryImpl @Inject constructor(
     override val air = MutableStateFlow<AirReading?>(null)
     override val system = MutableStateFlow<SystemInfo?>(null)
     override val calibration = MutableStateFlow<CalibrationStatus?>(null)
+    override val boardTime = MutableStateFlow<BoardTime?>(null)
+    override val wifi = MutableStateFlow<WifiStatus?>(null)
     override val hasLed = MutableStateFlow(false)
     override val hasConfig = MutableStateFlow(false)
     override val rssi = MutableStateFlow<Int?>(null)
@@ -114,6 +118,8 @@ class BoardRepositoryImpl @Inject constructor(
         air.value = null
         system.value = null
         calibration.value = null
+        boardTime.value = null
+        wifi.value = null
         hasLed.value = false
         hasConfig.value = false
         rssi.value = null
@@ -132,6 +138,13 @@ class BoardRepositoryImpl @Inject constructor(
         display.value = if (conn.has(Protocol.DISPLAY)) DisplayState.decode(conn.read(Protocol.DISPLAY)) else null
         air.value = if (conn.has(Protocol.AIR)) runCatching { AirReading.decode(conn.read(Protocol.AIR)) }.getOrNull() else null
         calibration.value = if (conn.has(Protocol.CALIBRATION)) readCalibration(conn) else null
+        if (conn.has(Protocol.TIME)) {
+            // Give the board the phone's time and zone on every connect: it then knows
+            // the time even without Wi-Fi, and summer time follows the phone's rules.
+            runCatching { conn.write(Protocol.TIME, BoardTime.encodeFromPhone(System.currentTimeMillis(), java.util.TimeZone.getDefault())) }
+            boardTime.value = runCatching { BoardTime.decode(conn.read(Protocol.TIME)) }.getOrNull()
+        }
+        wifi.value = if (conn.has(Protocol.WIFI)) runCatching { WifiStatus.decode(conn.read(Protocol.WIFI)) }.getOrNull() else null
         system.value = if (conn.has(Protocol.SYSTEM)) runCatching { SystemInfo.decode(conn.read(Protocol.SYSTEM)) }.getOrNull() else null
         // The first Env notification can take a few seconds; read one now.
         runCatching { Env.decode(conn.read(Protocol.ENV)) }.onSuccess { env.value = it }
@@ -158,6 +171,17 @@ class BoardRepositoryImpl @Inject constructor(
             scope.launch {
                 conn.buttonNotifications.collect { bytes ->
                     runCatching { ButtonState.decode(bytes) }.onSuccess { button.value = it }
+                }
+            },
+            scope.launch {
+                conn.wifiNotifications.collect { bytes ->
+                    runCatching { WifiStatus.decode(bytes) }.onSuccess { wifi.value = it }
+                }
+            },
+            scope.launch {
+                while (isActive && conn.has(Protocol.TIME)) {
+                    delay(30_000)
+                    boardTime.value = runCatching { BoardTime.decode(conn.read(Protocol.TIME)) }.getOrNull() ?: boardTime.value
                 }
             },
             scope.launch {
@@ -236,6 +260,15 @@ class BoardRepositoryImpl @Inject constructor(
         conn.write(Protocol.CALIBRATION, byteArrayOf(raw.toByte(), (raw shr 8).toByte(), if (auto) 1 else 0, command.toByte()))
         calibration.value = readCalibration(conn)
     }
+
+    override suspend fun scanWifi() = requireConnection().write(Protocol.WIFI, WifiStatus.scan())
+
+    override suspend fun connectWifi(ssid: String, password: String) =
+        requireConnection().write(Protocol.WIFI, WifiStatus.connect(ssid, password))
+
+    override suspend fun forgetWifi() = requireConnection().write(Protocol.WIFI, WifiStatus.forget())
+
+    override suspend fun setMqtt(enabled: Boolean) = requireConnection().write(Protocol.WIFI, WifiStatus.mqtt(enabled))
 
     override suspend fun send(command: Command) {
         requireConnection().write(Protocol.COMMAND, byteArrayOf(command.code.toByte()))

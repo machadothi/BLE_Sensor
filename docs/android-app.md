@@ -118,7 +118,10 @@ adapts:
   temperature/humidity, the Thunderboard included (computed in the app).
 - **Charts:** eCO2 and TVOC are added.
 - **No Motion tab.** **Control** has only identify, reboot and factory reset.
-- **Settings:** name, display pages (and "Upside down"), and **Calibration**:
+- **Settings:** name; **Wi-Fi, time & MQTT** (the board's network with a scan
+  to choose another, its clock, MQTT on/off; the app sends the phone's time and
+  zone on every connect); display pages (and "Upside down", clock page); and
+  **Calibration**:
   the temperature offset slider, "Measure now" (the board measures its own
   self-heating, with live progress), and a daily automatic measurement.
 

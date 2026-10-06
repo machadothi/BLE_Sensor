@@ -19,6 +19,7 @@ import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.Thermostat
@@ -68,6 +69,7 @@ private val DisplayPage.icon: ImageVector
         DisplayPage.DEW_POINT -> Icons.Rounded.Opacity
         DisplayPage.SENSOR_DETAILS -> Icons.Rounded.Memory
         DisplayPage.SYSTEM -> Icons.Rounded.DeveloperBoard
+        DisplayPage.CLOCK -> Icons.Rounded.Schedule
     }
 
 // Half seconds up to 10 s, whole seconds above: readable values on the slider.
@@ -95,7 +97,7 @@ fun DisplayCard(
     // Thunderboards list all their pages (absent sensors greyed out); the ESP32 Air board only its own.
     val airPages = setOf(
         DisplayPage.AIR_QUALITY, DisplayPage.ECO2, DisplayPage.TVOC,
-        DisplayPage.DEW_POINT, DisplayPage.SENSOR_DETAILS, DisplayPage.SYSTEM,
+        DisplayPage.DEW_POINT, DisplayPage.SENSOR_DETAILS, DisplayPage.SYSTEM, DisplayPage.CLOCK,
     )
     val thunderboard = info?.isThunderboard != false
     val listed = DisplayPage.entries.filter { if (thunderboard) it !in airPages else it in available }
