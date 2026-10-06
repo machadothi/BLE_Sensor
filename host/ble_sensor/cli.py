@@ -11,7 +11,7 @@ from typing import Awaitable, Callable, Optional
 
 from .client import BleSensor
 from .protocol import (
-    COMMANDS, DISPLAY_PAGE_TIME_S, DISPLAY_PAGES, ESP32_AIR, LED_MODES, LIMITS, CONFIG_SENSORS, Air, Button, Config, Env,
+    COMMANDS, DISPLAY_PAGE_TIME_S, DISPLAY_PAGES, ESP32_AIR, LED_MODES, LIMITS, CONFIG_SENSORS, Air, System, Button, Config, Env,
     Motion, board_pages,
 )
 
@@ -64,9 +64,24 @@ def print_config(config: Config) -> None:
 def print_air(air: Air) -> None:
     if air.state != "normal":
         print(f"air: {air.state}")
-        return
-    names = ["", "excellent", "good", "moderate", "poor", "unhealthy"]
-    print(f"air: AQI {air.aqi} ({names[air.aqi or 0]})  eCO2={air.eco2_ppm} ppm  TVOC={air.tvoc_ppb} ppb")
+    else:
+        names = ["", "excellent", "good", "moderate", "poor", "unhealthy"]
+        print(f"air: AQI {air.aqi} ({names[air.aqi or 0]})  eCO2={air.eco2_ppm} ppm  TVOC={air.tvoc_ppb} ppb")
+    if air.firmware:
+        r1 = f"{air.r1_ohms:,.0f} Ω" if air.r1_ohms else "n/a"
+        r4 = f"{air.r4_ohms:,.0f} Ω" if air.r4_ohms else "n/a"
+        comp = f"{air.compensation_c:.1f}°C {air.compensation_pct:.1f}%" if air.compensation_c is not None else "n/a"
+        print(f"ens160: firmware {air.firmware}  status 0x{air.status:02x}  R1={r1}  R4={r4}  compensation {comp}")
+
+
+def print_system(system: System) -> None:
+    chip = f"{system.chip_temperature_c:.1f}°C" if system.chip_temperature_c is not None else "n/a"
+    wifi = f"{system.wifi_rssi} dBm {system.ip}" if system.wifi else "offline"
+    print(f"board: up {system.uptime_s} s  wifi {wifi}  mqtt {'on' if system.mqtt else 'off'}  chip {chip}  "
+          f"RAM {system.free_ram // 1024} KB  {system.cpu_mhz} MHz  MicroPython {system.micropython}  "
+          f"last reset: {system.reset_cause}")
+    print(f"       sensor errors {system.sensor_errors}  checksum errors {system.integrity_errors}  "
+          f"time above 80 %RH {system.humid_s} s")
 
 
 async def cmd_info(board: BleSensor, args: argparse.Namespace) -> None:
@@ -87,6 +102,7 @@ async def cmd_read(board: BleSensor, args: argparse.Namespace) -> None:
     print_env(await board.read_env())
     if "air" in info.available:
         print_air(await board.read_air())
+        print_system(await board.read_system())
     if "imu" in info.available:
         try:
             print_motion(await board.read_motion())

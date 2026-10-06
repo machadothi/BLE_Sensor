@@ -29,6 +29,7 @@ COMMAND_UUID = _uuid(0x07)
 NAME_UUID = _uuid(0x08)
 DISPLAY_UUID = _uuid(0x09)
 AIR_UUID = _uuid(0x0A)       # ESP32 Air board only
+SYSTEM_UUID = _uuid(0x0B)    # ESP32 Air board only
 
 # Advertised manufacturer data: company id -> (board id, protocol version)
 ADV_COMPANY_ID = 0x02FF  # Silicon Laboratories
@@ -55,10 +56,10 @@ LED_MODES = {"off": 0, "on": 1, "blink": 2}
 DISPLAY_PAGES = [
     "temperature", "humidity", "light", "uv", "magnetic",
     "sound", "supply", "chip-temperature", "orientation", "button",
-    "air", "eco2", "tvoc",   # bits 10-12: ESP32 Air board
+    "air", "eco2", "tvoc", "dewpoint", "sensor", "system",   # bits 10-15: ESP32 Air board
 ]
 THUNDERBOARD_PAGES = DISPLAY_PAGES[:10]
-ESP32_AIR_PAGES = ["temperature", "humidity", "air", "eco2", "tvoc"]
+ESP32_AIR_PAGES = ["temperature", "humidity", "air", "eco2", "tvoc", "dewpoint", "sensor", "system"]
 DISPLAY_PAGES_ALL = (1 << len(THUNDERBOARD_PAGES)) - 1   # Thunderboard
 DISPLAY_PAGE_TIME_S = (1.0, 60.0)   # allowed seconds per reading
 
@@ -297,18 +298,68 @@ AIR_STATES = {0: "normal", 1: "warm-up", 2: "start-up", 3: "invalid", 0xFF: "no 
 
 @dataclass
 class Air:
-    """ENS160 air quality (ESP32 Air board). Values are None unless state is "normal"."""
+    """ENS160 air quality (ESP32 Air board). Values are None unless state is "normal".
+    The details after the first 10 bytes are None with older firmware."""
     uptime_ms: int
     state: str
     aqi: Optional[int]          # 1 excellent ... 5 unhealthy (UBA)
     eco2_ppm: Optional[int]
     tvoc_ppb: Optional[int]
+    status: Optional[int] = None             # raw DEVICE_STATUS register
+    firmware: Optional[str] = None           # ENS160 firmware
+    r1_ohms: Optional[float] = None          # raw resistance, sensor element 1
+    r4_ohms: Optional[float] = None          # raw resistance, sensor element 4
+    compensation_c: Optional[float] = None   # what the ENS160 uses for compensation
+    compensation_pct: Optional[float] = None
 
     FORMAT = struct.Struct("<I B B H H")
+    DETAILS = struct.Struct("<B B B B H H h H")
 
     @classmethod
     def decode(cls, data: bytes) -> "Air":
         uptime, state, aqi, eco2, tvoc = cls.FORMAT.unpack(data[: cls.FORMAT.size])
         ok = state == 0
-        return cls(uptime, AIR_STATES.get(state, "no sensor"), aqi if ok and 1 <= aqi <= 5 else None,
-                   eco2 if ok else None, tvoc if ok else None)
+        air = cls(uptime, AIR_STATES.get(state, "no sensor"), aqi if ok and 1 <= aqi <= 5 else None,
+                  eco2 if ok else None, tvoc if ok else None)
+        if len(data) >= cls.FORMAT.size + cls.DETAILS.size:
+            status, major, minor, release, r1, r4, comp_t, comp_rh = cls.DETAILS.unpack_from(data, cls.FORMAT.size)
+            air.status = status
+            air.firmware = f"{major}.{minor}.{release}"
+            air.r1_ohms = 2 ** (r1 / 2048) if r1 else None
+            air.r4_ohms = 2 ** (r4 / 2048) if r4 else None
+            if comp_t != 0x7FFF:
+                air.compensation_c, air.compensation_pct = comp_t / 100, comp_rh / 100
+        return air
+
+
+RESET_CAUSES = {1: "power on", 2: "reset pin / USB", 3: "watchdog", 4: "deep sleep", 5: "software"}
+
+
+@dataclass
+class System:
+    """The ESP32 Air board itself."""
+    uptime_s: int
+    free_ram: int
+    chip_temperature_c: Optional[float]   # die temperature, uncalibrated
+    wifi_rssi: Optional[int]
+    wifi: bool
+    mqtt: bool
+    bluetooth: bool
+    ip: Optional[str]
+    cpu_mhz: int
+    reset_cause: str
+    micropython: str
+    sensor_errors: int
+    integrity_errors: int     # ENS160 checksum mismatches
+    humid_s: int              # seconds above 80 %RH (AHT21 drift risk)
+
+    FORMAT = struct.Struct("<I I h b B 4s H B B B B H H I H")
+
+    @classmethod
+    def decode(cls, data: bytes) -> "System":
+        (uptime, ram, chip, rssi, flags, ip, mhz, reset, mp1, mp2, mp3,
+         errors, integrity, humid, _) = cls.FORMAT.unpack(data[: cls.FORMAT.size])
+        return cls(uptime, ram, None if chip == 0x7FFF else chip / 100, rssi or None,
+                   bool(flags & 1), bool(flags & 2), bool(flags & 4),
+                   ".".join(map(str, ip)) if any(ip) else None, mhz, RESET_CAUSES.get(reset, str(reset)),
+                   f"{mp1}.{mp2}.{mp3}", errors, integrity, humid)

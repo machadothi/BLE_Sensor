@@ -38,6 +38,7 @@ class BoardViewModel @Inject constructor(
     val motion = repository.motion
     val button = repository.button
     val air = repository.air
+    val system = repository.system
     val hasLed = repository.hasLed
     val hasConfig = repository.hasConfig
     val rssi = repository.rssi

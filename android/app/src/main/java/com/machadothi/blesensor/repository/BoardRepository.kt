@@ -10,6 +10,7 @@ import com.machadothi.blesensor.ble.DisplayState
 import com.machadothi.blesensor.ble.Env
 import com.machadothi.blesensor.ble.LedState
 import com.machadothi.blesensor.ble.Motion
+import com.machadothi.blesensor.ble.SystemInfo
 import kotlinx.coroutines.flow.StateFlow
 
 sealed interface ConnectionStatus {
@@ -46,6 +47,8 @@ interface BoardRepository {
     val button: StateFlow<ButtonState?>
     /** Null unless the board measures air quality (ESP32 Air). */
     val air: StateFlow<AirReading?>
+    /** Null unless the board reports its own status (ESP32 Air). */
+    val system: StateFlow<SystemInfo?>
     /** False on boards without LED/config/motion (ESP32 Air): the UI hides those parts. */
     val hasLed: StateFlow<Boolean>
     val hasConfig: StateFlow<Boolean>

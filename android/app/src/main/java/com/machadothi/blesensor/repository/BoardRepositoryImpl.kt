@@ -13,6 +13,7 @@ import com.machadothi.blesensor.ble.DisplayState
 import com.machadothi.blesensor.ble.Env
 import com.machadothi.blesensor.ble.LedState
 import com.machadothi.blesensor.ble.Motion
+import com.machadothi.blesensor.ble.SystemInfo
 import com.machadothi.blesensor.ble.Protocol
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -53,6 +54,7 @@ class BoardRepositoryImpl @Inject constructor(
     override val motion = MutableStateFlow<Motion?>(null)
     override val button = MutableStateFlow<ButtonState?>(null)
     override val air = MutableStateFlow<AirReading?>(null)
+    override val system = MutableStateFlow<SystemInfo?>(null)
     override val hasLed = MutableStateFlow(false)
     override val hasConfig = MutableStateFlow(false)
     override val rssi = MutableStateFlow<Int?>(null)
@@ -108,6 +110,7 @@ class BoardRepositoryImpl @Inject constructor(
         motion.value = null
         button.value = null
         air.value = null
+        system.value = null
         hasLed.value = false
         hasConfig.value = false
         rssi.value = null
@@ -125,6 +128,7 @@ class BoardRepositoryImpl @Inject constructor(
         button.value = if (conn.has(Protocol.BUTTON)) ButtonState.decode(conn.read(Protocol.BUTTON)) else null
         display.value = if (conn.has(Protocol.DISPLAY)) DisplayState.decode(conn.read(Protocol.DISPLAY)) else null
         air.value = if (conn.has(Protocol.AIR)) runCatching { AirReading.decode(conn.read(Protocol.AIR)) }.getOrNull() else null
+        system.value = if (conn.has(Protocol.SYSTEM)) runCatching { SystemInfo.decode(conn.read(Protocol.SYSTEM)) }.getOrNull() else null
         // The first Env notification can take a few seconds; read one now.
         runCatching { Env.decode(conn.read(Protocol.ENV)) }.onSuccess { env.value = it }
     }
@@ -150,6 +154,11 @@ class BoardRepositoryImpl @Inject constructor(
             scope.launch {
                 conn.buttonNotifications.collect { bytes ->
                     runCatching { ButtonState.decode(bytes) }.onSuccess { button.value = it }
+                }
+            },
+            scope.launch {
+                conn.systemNotifications.collect { bytes ->
+                    runCatching { SystemInfo.decode(bytes) }.onSuccess { system.value = it }
                 }
             },
             scope.launch {

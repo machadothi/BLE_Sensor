@@ -117,4 +117,27 @@ class ProtocolTest {
         )
         assertEquals(display.pages, display.pages.filter { it.isAvailableOn(info) }.toSet())
     }
+
+    // The ESP32's extended Air (22 bytes) and System (32 bytes) values.
+    @Test
+    fun esp32Details() {
+        val air = AirReading.decode(hex("e8800000000321032d0183050406d6a92c7a870a3c12"))
+        assertEquals(801, air.eco2Ppm)
+        assertEquals("5.4.6", air.firmware)
+        assertEquals(0x83, air.statusRegister)
+        assertEquals(26.95f, air.compensationC!!, 0.001f)
+        assertEquals(46.68f, air.compensationPct!!, 0.001f)
+        assertEquals(Math.pow(2.0, 43478 / 2048.0), air.r1Ohms!!, 1.0)
+
+        val system = SystemInfo.decode(hex("2100000020e500003a12c207c0a8012aa0000201180100000000000000000000"))
+        assertEquals(46.66f, system.chipTemperatureC!!, 0.001f)
+        assertEquals(-62, system.wifiRssi)
+        assertEquals("192.168.1.42", system.ip)
+        assertEquals(true, system.wifi && system.mqtt && system.bluetooth)
+        assertEquals("1.24.1", system.micropython)
+        assertEquals("Reset pin / USB", system.resetCause)
+
+        assertEquals(14.6f, Derived.dewPoint(26.69f, 47.57f)!!, 0.1f)
+        assertEquals(12.0f, Derived.absoluteHumidity(26.69f, 47.57f)!!, 0.1f)
+    }
 }

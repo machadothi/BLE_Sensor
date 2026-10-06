@@ -25,6 +25,7 @@ object Protocol {
     val NAME: UUID = uuid(0x08)
     val DISPLAY: UUID = uuid(0x09)   // optional: firmware without it has no OLED support
     val AIR: UUID = uuid(0x0A)       // optional: air-quality boards (ESP32 Air) only
+    val SYSTEM: UUID = uuid(0x0B)    // optional: board status (ESP32 Air) only
 
     /** Advertised manufacturer data: company id, then board id and protocol version. */
     const val ADV_COMPANY_ID = 0x02FF
@@ -76,7 +77,10 @@ enum class DisplayPage(val label: String) {
     // Bits 10-12: the ESP32 Air board's pages.
     AIR_QUALITY("Air quality"),
     ECO2("CO2 (eCO2)"),
-    TVOC("TVOC");
+    TVOC("TVOC"),
+    DEW_POINT("Dew point"),
+    SENSOR_DETAILS("Air sensor details"),
+    SYSTEM("System (Wi-Fi, uptime)");
 
     val bit: Int get() = 1 shl ordinal
 
@@ -90,7 +94,7 @@ enum class DisplayPage(val label: String) {
         SUPPLY -> Sensor.SUPPLY in info.available
         ORIENTATION -> Sensor.IMU in info.available
         CHIP_TEMPERATURE, BUTTON -> info.isThunderboard
-        AIR_QUALITY, ECO2, TVOC -> Sensor.AIR in info.available
+        AIR_QUALITY, ECO2, TVOC, DEW_POINT, SENSOR_DETAILS, SYSTEM -> Sensor.AIR in info.available
     }
 }
 
@@ -307,10 +311,28 @@ enum class AirState(val label: String) {
     }
 }
 
-/** Air quality from the ENS160 (ESP32 Air board). Values are null unless the state is NORMAL. */
-data class AirReading(val uptimeMs: Long, val state: AirState, val aqi: Int?, val eco2Ppm: Int?, val tvocPpb: Int?) {
+/**
+ * Air quality from the ENS160 (ESP32 Air board). Values are null unless the state is NORMAL.
+ * The details after the first 10 bytes came later; older firmware leaves them null.
+ */
+data class AirReading(
+    val uptimeMs: Long,
+    val state: AirState,
+    val aqi: Int?,
+    val eco2Ppm: Int?,
+    val tvocPpb: Int?,
+    val statusRegister: Int? = null,
+    val firmware: String? = null,
+    /** Raw resistances of sensor elements 1 and 4, in ohms (datasheet: 2^(raw/2048)). */
+    val r1Ohms: Double? = null,
+    val r4Ohms: Double? = null,
+    /** The temperature and humidity the ENS160 uses for its compensation. */
+    val compensationC: Float? = null,
+    val compensationPct: Float? = null,
+) {
     companion object {
         const val SIZE = 10
+        const val FULL_SIZE = 22
 
         fun decode(bytes: ByteArray): AirReading {
             require(bytes.size >= SIZE) { "Air needs $SIZE bytes, got ${bytes.size}" }
@@ -321,7 +343,132 @@ data class AirReading(val uptimeMs: Long, val state: AirState, val aqi: Int?, va
             val eco2 = b.u16()
             val tvoc = b.u16()
             val ok = state == AirState.NORMAL
-            return AirReading(uptime, state, aqi.takeIf { ok && it in 1..5 }, eco2.takeIf { ok }, tvoc.takeIf { ok })
+            val base = AirReading(uptime, state, aqi.takeIf { ok && it in 1..5 }, eco2.takeIf { ok }, tvoc.takeIf { ok })
+            if (bytes.size < FULL_SIZE) return base
+            val status = b.u8()
+            val fw = "${b.u8()}.${b.u8()}.${b.u8()}"
+            val r1 = b.u16()
+            val r4 = b.u16()
+            val compC = b.i16()
+            val compPct = b.u16()
+            fun ohms(raw: Int) = if (raw == 0) null else Math.pow(2.0, raw / 2048.0)
+            return base.copy(
+                statusRegister = status,
+                firmware = fw.takeIf { it != "0.0.0" },
+                r1Ohms = ohms(r1),
+                r4Ohms = ohms(r4),
+                compensationC = if (compC == NONE_I16) null else compC / 100f,
+                compensationPct = if (compC == NONE_I16) null else compPct / 100f,
+            )
         }
+    }
+}
+
+/** "No value" in the boards' signed 16-bit fields. */
+private const val NONE_I16 = 0x7FFF
+
+/** The board itself (ESP32 Air): System characteristic, 32 bytes. */
+data class SystemInfo(
+    val uptimeS: Long,
+    val freeRam: Long,
+    /** ESP32 die temperature, uncalibrated: well above room temperature. */
+    val chipTemperatureC: Float?,
+    val wifiRssi: Int?,
+    val wifi: Boolean,
+    val mqtt: Boolean,
+    val bluetooth: Boolean,
+    val ip: String?,
+    val cpuMhz: Int,
+    val resetCause: String,
+    val micropython: String,
+    val sensorErrors: Int,
+    val integrityErrors: Int,
+    /** Seconds the AHT21 spent above 80 %RH since start (long stays cause drift). */
+    val humidSeconds: Long,
+) {
+    companion object {
+        const val SIZE = 32
+
+        fun decode(bytes: ByteArray): SystemInfo {
+            require(bytes.size >= SIZE) { "System needs $SIZE bytes, got ${bytes.size}" }
+            val b = le(bytes)
+            val uptime = b.u32()
+            val ram = b.u32()
+            val chip = b.i16()
+            val rssi = b.get().toInt()
+            val flags = b.u8()
+            val ip = (0 until 4).map { b.u8() }
+            val mhz = b.u16()
+            val reset = b.u8()
+            val mp = "${b.u8()}.${b.u8()}.${b.u8()}"
+            return SystemInfo(
+                uptimeS = uptime,
+                freeRam = ram,
+                chipTemperatureC = if (chip == NONE_I16) null else chip / 100f,
+                wifiRssi = rssi.takeIf { it != 0 },
+                wifi = flags and 1 != 0,
+                mqtt = flags and 2 != 0,
+                bluetooth = flags and 4 != 0,
+                ip = ip.takeIf { it.any { part -> part != 0 } }?.joinToString("."),
+                cpuMhz = mhz,
+                resetCause = when (reset) {
+                    1 -> "Power on"
+                    2 -> "Reset pin / USB"
+                    3 -> "Watchdog"
+                    4 -> "Deep sleep"
+                    5 -> "Software"
+                    else -> "Unknown ($reset)"
+                },
+                micropython = mp,
+                sensorErrors = b.u16(),
+                integrityErrors = b.u16(),
+                humidSeconds = b.u32(),
+            )
+        }
+    }
+}
+
+/** Values derived from the readings, using the sensors' datasheets. */
+object Derived {
+    private fun magnus(t: Double) = 17.62 * t / (243.12 + t)
+
+    /** Dew point, °C (Magnus formula). */
+    fun dewPoint(temperatureC: Float?, humidityPct: Float?): Float? {
+        if (temperatureC == null || humidityPct == null || humidityPct <= 0f) return null
+        val gamma = Math.log(humidityPct / 100.0) + magnus(temperatureC.toDouble())
+        return (243.12 * gamma / (17.62 - gamma)).toFloat()
+    }
+
+    /** Water vapour, g/m³. */
+    fun absoluteHumidity(temperatureC: Float?, humidityPct: Float?): Float? {
+        if (temperatureC == null || humidityPct == null) return null
+        return (216.7 * humidityPct / 100 * 6.112 * Math.exp(magnus(temperatureC.toDouble())) / (273.15 + temperatureC)).toFloat()
+    }
+
+    /** TVOC in µg/m³: the ENS160's TVOC is ethanol-calibrated (datasheet: DATA_ETOH = DATA_TVOC). */
+    fun tvocUgm3(tvocPpb: Int?, temperatureC: Float?): Float? {
+        if (tvocPpb == null) return null
+        val molarVolume = 22.414 * (273.15 + (temperatureC ?: 25f)) / 273.15
+        return (tvocPpb * 46.07 / molarVolume).toFloat()
+    }
+
+    /** ENS160 datasheet, table 5. */
+    fun eco2Rating(ppm: Int?): String? = when {
+        ppm == null -> null
+        ppm < 600 -> "Excellent"
+        ppm < 800 -> "Good"
+        ppm < 1000 -> "Fair: ventilation optional"
+        ppm < 1500 -> "Poor: ventilate"
+        else -> "Bad: ventilation required"
+    }
+
+    /** How the air feels, from the dew point. */
+    fun comfort(dewPointC: Float?): String? = when {
+        dewPointC == null -> null
+        dewPointC < 5 -> "Dry"
+        dewPointC < 13 -> "Comfortable"
+        dewPointC < 16 -> "Slightly humid"
+        dewPointC < 19 -> "Humid"
+        else -> "Muggy"
     }
 }

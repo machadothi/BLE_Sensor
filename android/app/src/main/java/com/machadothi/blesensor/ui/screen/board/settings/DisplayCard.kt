@@ -13,6 +13,8 @@ import androidx.compose.material.icons.automirrored.rounded.ShowChart
 import androidx.compose.material.icons.rounded.Air
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Co2
+import androidx.compose.material.icons.rounded.DeveloperBoard
+import androidx.compose.material.icons.rounded.Opacity
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.LightMode
@@ -62,6 +64,9 @@ private val DisplayPage.icon: ImageVector
         DisplayPage.AIR_QUALITY -> Icons.Rounded.Air
         DisplayPage.ECO2 -> Icons.Rounded.Co2
         DisplayPage.TVOC -> Icons.Rounded.Science
+        DisplayPage.DEW_POINT -> Icons.Rounded.Opacity
+        DisplayPage.SENSOR_DETAILS -> Icons.Rounded.Memory
+        DisplayPage.SYSTEM -> Icons.Rounded.DeveloperBoard
     }
 
 // Half seconds up to 10 s, whole seconds above: readable values on the slider.
@@ -86,7 +91,10 @@ fun DisplayCard(
 ) {
     val available = DisplayPage.entries.filter { info == null || it.isAvailableOn(info) }.toSet()
     // Thunderboards list all their pages (absent sensors greyed out); the ESP32 Air board only its own.
-    val airPages = setOf(DisplayPage.AIR_QUALITY, DisplayPage.ECO2, DisplayPage.TVOC)
+    val airPages = setOf(
+        DisplayPage.AIR_QUALITY, DisplayPage.ECO2, DisplayPage.TVOC,
+        DisplayPage.DEW_POINT, DisplayPage.SENSOR_DETAILS, DisplayPage.SYSTEM,
+    )
     val thunderboard = info?.isThunderboard != false
     val listed = DisplayPage.entries.filter { if (thunderboard) it !in airPages else it in available }
     // Follows the slider while dragging; sent to the board when released.

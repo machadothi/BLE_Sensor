@@ -29,13 +29,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Air
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Co2
+import androidx.compose.material.icons.rounded.DeveloperBoard
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.Opacity
 import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.material.icons.rounded.Water
 import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material3.MaterialTheme
@@ -55,6 +58,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.machadothi.blesensor.ble.AirReading
 import com.machadothi.blesensor.ble.AirState
 import com.machadothi.blesensor.ble.ButtonState
+import com.machadothi.blesensor.ble.Derived
+import com.machadothi.blesensor.ble.Env
+import com.machadothi.blesensor.ble.SystemInfo
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import com.machadothi.blesensor.ble.Sensor
@@ -91,6 +97,7 @@ fun LiveTab(viewModel: BoardViewModel) {
     val history by viewModel.history.collectAsStateWithLifecycle()
     val button by viewModel.button.collectAsStateWithLifecycle()
     val air by viewModel.air.collectAsStateWithLifecycle()
+    val system by viewModel.system.collectAsStateWithLifecycle()
 
     val available = info?.available ?: emptySet()
     // Boards without a Config characteristic (ESP32 Air) always run all their sensors.
@@ -103,6 +110,9 @@ fun LiveTab(viewModel: BoardViewModel) {
         if (shows(Sensor.RHT)) {
             add(Metric("Temperature", Icons.Rounded.Thermostat, Coral, "°C", e?.temperatureC, { "%.1f".format(it) }, history.temperatureC, note = offNote(Sensor.RHT)))
             add(Metric("Humidity", Icons.Rounded.WaterDrop, Sky, "%", e?.humidityPct, { "%.1f".format(it) }, history.humidityPct, note = offNote(Sensor.RHT)))
+            val dew = Derived.dewPoint(e?.temperatureC, e?.humidityPct)
+            add(Metric("Dew point", Icons.Rounded.Opacity, Teal, "°C", dew, { "%.1f".format(it) }, note = Derived.comfort(dew)))
+            add(Metric("Absolute humidity", Icons.Rounded.Water, Sky, "g/m³", Derived.absoluteHumidity(e?.temperatureC, e?.humidityPct), { "%.1f".format(it) }))
         }
         if (shows(Sensor.LIGHT)) {
             add(Metric("Light", Icons.Rounded.LightMode, Amber, "lx", e?.lux, { "%.0f".format(it) }, history.lux, note = offNote(Sensor.LIGHT)))
@@ -127,8 +137,11 @@ fun LiveTab(viewModel: BoardViewModel) {
         if (shows(Sensor.AIR)) {
             val a = air
             val waiting = a?.state?.takeIf { it != AirState.NORMAL }?.label
-            add(Metric("eCO2", Icons.Rounded.Co2, Sky, "ppm", a?.eco2Ppm?.toFloat(), { "%.0f".format(it) }, history.eco2Ppm, note = waiting))
-            add(Metric("TVOC", Icons.Rounded.Science, Violet, "ppb", a?.tvocPpb?.toFloat(), { "%.0f".format(it) }, history.tvocPpb, note = waiting))
+            add(Metric("eCO2", Icons.Rounded.Co2, Sky, "ppm", a?.eco2Ppm?.toFloat(), { "%.0f".format(it) }, history.eco2Ppm,
+                note = waiting ?: Derived.eco2Rating(a?.eco2Ppm)))
+            val ugm3 = Derived.tvocUgm3(a?.tvocPpb, e?.temperatureC)
+            add(Metric("TVOC", Icons.Rounded.Science, Violet, "ppb", a?.tvocPpb?.toFloat(), { "%.0f".format(it) }, history.tvocPpb,
+                note = waiting ?: ugm3?.let { "≈ %.0f µg/m³ (ethanol)".format(it) }))
         }
         if (info?.isThunderboard == true) {
             add(Metric("Chip temperature", Icons.Rounded.Memory, Coral, "°C", e?.dieTemperatureC, { "%.1f".format(it) }))
@@ -149,6 +162,10 @@ fun LiveTab(viewModel: BoardViewModel) {
             item(span = { GridItemSpan(maxLineSpan) }) { ButtonCard(button) }
         }
         items(metrics, key = { it.title }) { MetricCard(it, Modifier.animateItem()) }
+        if (shows(Sensor.AIR)) {
+            item(span = { GridItemSpan(maxLineSpan) }) { SensorDetailsCard(air, e, system) }
+        }
+        system?.let { info -> item(span = { GridItemSpan(maxLineSpan) }) { BoardStatusCard(info) } }
     }
 }
 
@@ -264,4 +281,86 @@ private fun AirQualityCard(air: AirReading?) {
             }
         }
     }
+}
+
+/** Everything the two sensors report beyond the main readings (datasheet details). */
+@Composable
+private fun SensorDetailsCard(air: AirReading?, env: Env?, system: SystemInfo?) {
+    GlowCard(Modifier.fillMaxWidth(), accent = Violet) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            CardHeader(Icons.Rounded.Memory, "Air sensor details", Violet)
+            DetailSection("ENS160 · gas sensor")
+            DetailRow("State", air?.state?.label ?: "—")
+            DetailRow("Firmware", air?.firmware ?: "—")
+            DetailRow("Status register", air?.statusRegister?.let { "0x%02X".format(it) } ?: "—")
+            DetailRow("Resistance R1", air?.r1Ohms?.let(::formatOhms) ?: "—")
+            DetailRow("Resistance R4", air?.r4Ohms?.let(::formatOhms) ?: "—")
+            DetailRow(
+                "Compensation in use",
+                if (air?.compensationC == null) "—" else "%.1f °C · %.1f %%".format(air.compensationC, air.compensationPct),
+            )
+            DetailRow("Checksum errors", system?.integrityErrors?.toString() ?: "—")
+            DetailSection("AHT21 · temperature & humidity")
+            DetailRow("Accuracy (datasheet)", "±0.3 °C · ±2 %RH typical")
+            DetailRow("Time above 80 %RH", system?.humidSeconds?.let(::formatDuration) ?: "—")
+            if ((system?.humidSeconds ?: 0) > 60 * 60) {
+                Text(
+                    "Long stays above 80 %RH can make humidity read up to 3 % high until the sensor recovers.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Amber,
+                )
+            }
+            DetailRow("Sensor errors", system?.sensorErrors?.toString() ?: "—")
+            Text(
+                "R1/R4 are the raw metal-oxide resistances; they swing widely by design. " +
+                    "Compensation should match the temperature and humidity above.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** The ESP32 itself: network, memory, chip temperature, firmware. */
+@Composable
+private fun BoardStatusCard(info: SystemInfo) {
+    GlowCard(Modifier.fillMaxWidth(), accent = Sky) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            CardHeader(Icons.Rounded.DeveloperBoard, "Board", Sky)
+            DetailRow("Wi-Fi", if (info.wifi) "${info.wifiRssi ?: "—"} dBm · ${info.ip ?: "—"}" else "offline")
+            DetailRow("MQTT", if (info.mqtt) "connected" else "offline")
+            DetailRow("Uptime", formatDuration(info.uptimeS))
+            DetailRow("Last reset", info.resetCause)
+            DetailRow("Chip temperature", info.chipTemperatureC?.let { "%.1f °C".format(it) } ?: "—")
+            DetailRow("Free memory", "%.0f KB".format(info.freeRam / 1024f))
+            DetailRow("CPU", "${info.cpuMhz} MHz")
+            DetailRow("MicroPython", info.micropython)
+        }
+    }
+}
+
+@Composable
+private fun DetailSection(title: String) {
+    Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+}
+
+@Composable
+private fun DetailRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth()) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+        Text(value, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+private fun formatOhms(ohms: Double): String = when {
+    ohms >= 1e6 -> "%.2f MΩ".format(ohms / 1e6)
+    ohms >= 1e3 -> "%.1f kΩ".format(ohms / 1e3)
+    else -> "%.0f Ω".format(ohms)
+}
+
+private fun formatDuration(seconds: Long): String = when {
+    seconds < 60 -> "$seconds s"
+    seconds < 3600 -> "${seconds / 60} min"
+    seconds < 86_400 -> "${seconds / 3600} h ${seconds % 3600 / 60} min"
+    else -> "${seconds / 86_400} d ${seconds % 86_400 / 3600} h"
 }

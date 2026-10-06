@@ -30,11 +30,13 @@ class BoardConnection(context: Context) : BleManager(context) {
     private val motionFlow = notifications()
     private val buttonFlow = notifications()
     private val airFlow = notifications()
+    private val systemFlow = notifications()
 
     val envNotifications: SharedFlow<ByteArray> = envFlow
     val motionNotifications: SharedFlow<ByteArray> = motionFlow
     val buttonNotifications: SharedFlow<ByteArray> = buttonFlow
     val airNotifications: SharedFlow<ByteArray> = airFlow
+    val systemNotifications: SharedFlow<ByteArray> = systemFlow
 
     override fun isRequiredServiceSupported(gatt: BluetoothGatt): Boolean {
         val service = gatt.getService(Protocol.SERVICE) ?: return false
@@ -43,7 +45,7 @@ class BoardConnection(context: Context) : BleManager(context) {
             characteristics[uuid] = service.getCharacteristic(uuid) ?: return false
         }
         // Thunderboard only (motion, button, LED, config), OLED support, air quality (ESP32 Air).
-        listOf(Protocol.MOTION, Protocol.BUTTON, Protocol.LED, Protocol.CONFIG, Protocol.DISPLAY, Protocol.AIR).forEach { uuid ->
+        listOf(Protocol.MOTION, Protocol.BUTTON, Protocol.LED, Protocol.CONFIG, Protocol.DISPLAY, Protocol.AIR, Protocol.SYSTEM).forEach { uuid ->
             service.getCharacteristic(uuid)?.let { characteristics[uuid] = it }
         }
         return true
@@ -57,6 +59,7 @@ class BoardConnection(context: Context) : BleManager(context) {
         subscribe(Protocol.MOTION, motionFlow)
         subscribe(Protocol.BUTTON, buttonFlow)
         subscribe(Protocol.AIR, airFlow)
+        subscribe(Protocol.SYSTEM, systemFlow)
     }
 
     private fun subscribe(uuid: UUID, flow: MutableSharedFlow<ByteArray>) {

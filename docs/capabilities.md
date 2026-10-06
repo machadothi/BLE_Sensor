@@ -258,7 +258,8 @@ Board id `0x0C`, sensors `0x41` (temperature/humidity + air quality).
 | Env (`01`) | yes, every 2 s; only temperature and humidity are valid |
 | Motion, Button, LED, Config (`02`–`05`) | **absent**; the app hides those parts |
 | Info, Command, Name, Display (`06`–`09`) | yes; commands: factory reset, reboot, identify (flashes its display) |
-| **Air** (`0A`, read, notify, 10 bytes) | new, see below |
+| **Air** (`0A`, read, notify, 22 bytes) | new, see below |
+| **System** (`0B`, read, notify, 32 bytes) | the ESP32's own status: uptime, RAM, chip temperature, Wi-Fi, MQTT, reset cause, MicroPython version, error counters; layout in `ble_sensor_system_t` |
 
 Air:
 
@@ -269,9 +270,16 @@ Air:
 | 5 | u8 | AQI 1–5 (UBA), 0 unless normal |
 | 6 | u16 | eCO2, ppm, 0 unless normal |
 | 8 | u16 | TVOC, ppb, 0 unless normal |
+| 10 | u8 | raw DEVICE_STATUS |
+| 11 | 3 × u8 | ENS160 firmware |
+| 14 | u16 | raw resistance R1, ohms = 2^(raw/2048) |
+| 16 | u16 | raw resistance R4 |
+| 18 | i16 | compensation temperature in use, °C × 100 (`0x7FFF` = none) |
+| 20 | u16 | compensation humidity in use, % × 100 |
 
 Display pages on that board: temperature (bit 0), humidity (bit 1), and its own
-air quality (bit 10), eCO2 (bit 11), TVOC (bit 12). It doesn't answer writes
+air quality (bit 10), eCO2 (bit 11), TVOC (bit 12), dew point (bit 13), air
+sensor details (bit 14) and system (bit 15). It doesn't answer writes
 with ATT errors (MicroPython can't): it ignores an invalid value and writes the
 previous one back.
 

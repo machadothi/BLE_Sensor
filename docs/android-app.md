@@ -107,8 +107,15 @@ The app also works with the ESP32 air monitor (board id `0x0C`, see
 [capabilities.md](capabilities.md#other-boards-esp32-air)). Its radar lists it
 as "ESP32 Air". Because that board has no IMU, button, LED or config, the app
 adapts:
-- **Live:** an air-quality card (rating + 1–5 bar), eCO2 and TVOC cards, then
-  temperature and humidity. No button or chip-temperature card.
+- **Live:** an air-quality card (rating + 1–5 bar), eCO2 (with the datasheet
+  rating) and TVOC (also in µg/m³) cards, temperature and humidity, then two
+  detail cards. **Air sensor details**: ENS160 state, firmware, status
+  register, raw resistances, the compensation it uses, checksum errors; AHT21
+  accuracy and time above 80 %RH. **Board**: Wi-Fi, MQTT, uptime, last reset,
+  chip temperature, free memory, CPU, MicroPython. No button or
+  chip-temperature card.
+- **Dew point and absolute humidity** cards appear for every board with
+  temperature/humidity, the Thunderboard included (computed in the app).
 - **Charts:** eCO2 and TVOC are added.
 - **No Motion tab.** **Control** has only identify, reboot and factory reset.
 - **Settings:** only name and display pages, with the board's five pages.

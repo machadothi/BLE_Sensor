@@ -97,6 +97,9 @@ typedef enum {
 #define DISPLAY_PAGE_BIT_AIR_QUALITY       (1u << 10)
 #define DISPLAY_PAGE_BIT_ECO2              (1u << 11)
 #define DISPLAY_PAGE_BIT_TVOC              (1u << 12)
+#define DISPLAY_PAGE_BIT_DEW_POINT         (1u << 13)
+#define DISPLAY_PAGE_BIT_SENSOR_DETAILS    (1u << 14)
+#define DISPLAY_PAGE_BIT_SYSTEM            (1u << 15)
 
 // Display.page_ms: how long each reading stays on screen. Below 1 s the fade
 // between pages (~0.3 s) would take most of the time.
@@ -174,7 +177,31 @@ typedef struct {
   uint8_t  aqi;                   // 1-5 (UBA), 0 unless state is normal
   uint16_t eco2_ppm;              // 0 unless state is normal
   uint16_t tvoc_ppb;              // 0 unless state is normal
+  // Details (later addition; a client may read just the 10 bytes above)
+  uint8_t  status;                // raw ENS160 DEVICE_STATUS
+  uint8_t  firmware[3];           // ENS160 firmware: major, minor, release
+  uint16_t r1_raw;                // raw resistance, sensor element 1: ohms = 2^(raw/2048)
+  uint16_t r4_raw;                // raw resistance, sensor element 4
+  int16_t  compensation_c_x100;   // temperature the ENS160 uses, 0x7FFF = none yet
+  uint16_t compensation_pct_x100; // humidity the ENS160 uses
 } ble_sensor_air_t;
+
+// System (read, notify), characteristic a7e4000b: ESP32 Air board only.
+typedef struct {
+  uint32_t uptime_s;
+  uint32_t free_ram;
+  int16_t  chip_temp_c_x100;      // ESP32 die temperature (uncalibrated), 0x7FFF = n/a
+  int8_t   wifi_rssi;             // dBm, 0 = not connected
+  uint8_t  flags;                 // bit 0 Wi-Fi, bit 1 MQTT, bit 2 Bluetooth connected
+  uint8_t  ip[4];
+  uint16_t cpu_mhz;
+  uint8_t  reset_cause;           // 1 power on, 2 reset pin, 3 watchdog, 4 deep sleep, 5 software
+  uint8_t  micropython[3];        // major, minor, patch
+  uint16_t sensor_errors;
+  uint16_t integrity_errors;      // ENS160 checksum mismatches
+  uint32_t humid_s;               // seconds above 80 %RH since start
+  uint16_t reserved;
+} ble_sensor_system_t;
 
 #pragma pack(pop)
 
@@ -186,6 +213,7 @@ _Static_assert(sizeof(ble_sensor_led_t) == 5, "LED must be 5 bytes");
 _Static_assert(sizeof(ble_sensor_config_t) == 12, "Config must be 12 bytes");
 _Static_assert(sizeof(ble_sensor_info_t) == 4, "Info must be 4 bytes");
 _Static_assert(sizeof(ble_sensor_display_t) == 5, "Display must be 5 bytes");
-_Static_assert(sizeof(ble_sensor_air_t) == 10, "Air must be 10 bytes");
+_Static_assert(sizeof(ble_sensor_air_t) == 22, "Air must be 22 bytes");
+_Static_assert(sizeof(ble_sensor_system_t) == 32, "System must be 32 bytes");
 
 #endif // BLE_PROTOCOL_H
