@@ -29,6 +29,7 @@ object Protocol {
     val CALIBRATION: UUID = uuid(0x0C) // optional: i16 temperature offset, °C × 100 (ESP32 Air) only
     val TIME: UUID = uuid(0x0D)      // optional: the board's clock (ESP32 Air) only
     val WIFI: UUID = uuid(0x0E)      // optional: Wi-Fi network and scan (ESP32 Air) only
+    val WEATHER: UUID = uuid(0x0F)   // optional: Open-Meteo weather (ESP32 Air) only
     const val OFFSET_MAX_C = 10f
 
     /** Advertised manufacturer data: company id, then board id and protocol version. */
@@ -85,7 +86,8 @@ enum class DisplayPage(val label: String) {
     DEW_POINT("Dew point"),
     SENSOR_DETAILS("Air sensor details"),
     SYSTEM("System (Wi-Fi, uptime)"),
-    CLOCK("Clock");
+    CLOCK("Clock"),
+    WEATHER("Weather");
 
     val bit: Int get() = 1 shl ordinal
 
@@ -99,7 +101,7 @@ enum class DisplayPage(val label: String) {
         SUPPLY -> Sensor.SUPPLY in info.available
         ORIENTATION -> Sensor.IMU in info.available
         CHIP_TEMPERATURE, BUTTON -> info.isThunderboard
-        AIR_QUALITY, ECO2, TVOC, DEW_POINT, SENSOR_DETAILS, SYSTEM, CLOCK -> Sensor.AIR in info.available
+        AIR_QUALITY, ECO2, TVOC, DEW_POINT, SENSOR_DETAILS, SYSTEM, CLOCK, WEATHER -> Sensor.AIR in info.available
     }
 }
 
@@ -605,6 +607,8 @@ data class WifiStatus(
     val scanning: Boolean,
     val mqttEnabled: Boolean,
     val mqttConnected: Boolean,
+    /** Internet reachable: the board's latest internet request (time, weather) worked. */
+    val online: Boolean,
     val networks: List<Pair<String, Int>>,
 ) {
     enum class State { IDLE, CONNECTING, CONNECTED, FAILED }
@@ -631,7 +635,7 @@ data class WifiStatus(
             return WifiStatus(
                 state, reason.takeIf { state == State.FAILED }, rssi.takeIf { it != 0 },
                 ip.takeIf { it.any { p -> p != 0 } }?.joinToString("."), ssid, scanning,
-                mqtt and 1 != 0, mqtt and 2 != 0, networks,
+                mqtt and 1 != 0, mqtt and 2 != 0, mqtt and 4 != 0, networks,
             )
         }
 
@@ -643,5 +647,78 @@ data class WifiStatus(
             val p = password.encodeToByteArray()
             return byteArrayOf(2, s.size.toByte()) + s + byteArrayOf(p.size.toByte()) + p
         }
+    }
+}
+
+/** Weather from Open-Meteo, fetched by the board (ESP32 Air). */
+data class WeatherInfo(
+    val enabled: Boolean,
+    val fresh: Boolean,
+    val online: Boolean,
+    val temperatureC: Float?,
+    val feelsLikeC: Float?,
+    val humidityPct: Int?,
+    val code: Int,
+    val day: Boolean,
+    val windMs: Float?,
+    val highC: Float?,
+    val lowC: Float?,
+    val rainChancePct: Int?,
+    val ageMin: Int?,
+    val place: String,
+    val error: String?,
+    val placeIsAutomatic: Boolean,
+) {
+    /** WMO weather code as words (Open-Meteo docs). */
+    val description: String
+        get() = when (code) {
+            0 -> if (day) "Clear sky" else "Clear night"
+            1 -> "Mainly clear"
+            2 -> "Partly cloudy"
+            3 -> "Overcast"
+            45, 48 -> "Fog"
+            51, 53, 55, 56, 57 -> "Drizzle"
+            61, 63, 65, 66, 67 -> "Rain"
+            80, 81, 82 -> "Rain showers"
+            71, 73, 75, 77 -> "Snow"
+            85, 86 -> "Snow showers"
+            95, 96, 99 -> "Thunderstorm"
+            else -> "—"
+        }
+
+    companion object {
+        fun decode(bytes: ByteArray): WeatherInfo {
+            val b = le(bytes)
+            val flags = b.u8()
+            fun x10(raw: Int) = if (raw == NONE_I16) null else raw / 10f
+            val fresh = flags and 2 != 0
+            val temp = x10(b.i16())
+            val feels = x10(b.i16())
+            val humidity = b.u8()
+            val code = b.u8()
+            val day = b.u8() != 0
+            val wind = x10(b.i16())
+            val high = x10(b.i16())
+            val low = x10(b.i16())
+            val rain = b.u8()
+            val age = b.u16()
+            val place = ByteArray(b.u8()).also { b.get(it) }.decodeToString()
+            val error = ByteArray(b.u8()).also { b.get(it) }.decodeToString()
+            val auto = b.hasRemaining() && b.u8() != 0
+            return WeatherInfo(
+                flags and 1 != 0, fresh, flags and 4 != 0,
+                temp.takeIf { fresh }, feels.takeIf { fresh }, humidity.takeIf { fresh }, code, day,
+                wind.takeIf { fresh }, high.takeIf { fresh }, low.takeIf { fresh }, rain.takeIf { fresh },
+                age.takeIf { it != 0xFFFF }, place, error.ifEmpty { null }, auto,
+            )
+        }
+
+        fun setPlace(name: String): ByteArray {
+            val n = name.trim().encodeToByteArray().take(60).toByteArray()
+            return byteArrayOf(1, n.size.toByte()) + n
+        }
+        fun locateAutomatically() = setPlace("")
+        fun enabled(on: Boolean) = byteArrayOf(if (on) 2 else 3)
+        fun refresh() = byteArrayOf(4)
     }
 }

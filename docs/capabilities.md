@@ -260,7 +260,7 @@ Board id `0x0C`, sensors `0x41` (temperature/humidity + air quality).
 | Info, Command, Name, Display (`06`–`09`) | yes; commands: factory reset, reboot, identify (flashes its display). Display is **6 bytes** there: a flags byte follows, bit 0 = rotated 180° (the app shows an "Upside down" switch when it's present) |
 | **Air** (`0A`, read, notify, 22 bytes) | new, see below |
 | **Calibration** (`0C`, read, write, notify, 20 bytes) | temperature offset, plus the board's own self-heating measurement (state, progress, result); the app's Settings → Calibration card. Layout: air_quality_sensor `docs/bluetooth.md` |
-| **Time** (`0D`), **Wi-Fi** (`0E`) | the board's clock (the app sets it from the phone on connect) and Wi-Fi: network, scan, connect, MQTT on/off. Layouts: air_quality_sensor `docs/bluetooth.md` |
+| **Time** (`0D`), **Wi-Fi** (`0E`), **Weather** (`0F`) | the board's clock (the app sets it from the phone on connect), Wi-Fi (network, scan, connect, MQTT on/off, online state) and Open-Meteo weather (place by name or automatic). Layouts: air_quality_sensor `docs/bluetooth.md` |
 | **System** (`0B`, read, notify, 32 bytes) | the ESP32's own status: uptime, RAM, chip temperature, Wi-Fi, MQTT, reset cause, MicroPython version, error counters; layout in `ble_sensor_system_t` |
 
 Air:

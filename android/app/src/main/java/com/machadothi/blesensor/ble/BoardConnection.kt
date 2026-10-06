@@ -49,7 +49,7 @@ class BoardConnection(context: Context) : BleManager(context) {
             characteristics[uuid] = service.getCharacteristic(uuid) ?: return false
         }
         // Thunderboard only (motion, button, LED, config), OLED support, air quality (ESP32 Air).
-        listOf(Protocol.MOTION, Protocol.BUTTON, Protocol.LED, Protocol.CONFIG, Protocol.DISPLAY, Protocol.AIR, Protocol.SYSTEM, Protocol.CALIBRATION, Protocol.TIME, Protocol.WIFI).forEach { uuid ->
+        listOf(Protocol.MOTION, Protocol.BUTTON, Protocol.LED, Protocol.CONFIG, Protocol.DISPLAY, Protocol.AIR, Protocol.SYSTEM, Protocol.CALIBRATION, Protocol.TIME, Protocol.WIFI, Protocol.WEATHER).forEach { uuid ->
             service.getCharacteristic(uuid)?.let { characteristics[uuid] = it }
         }
         return true

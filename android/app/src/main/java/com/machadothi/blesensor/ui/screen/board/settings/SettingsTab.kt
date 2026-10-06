@@ -1,5 +1,7 @@
 package com.machadothi.blesensor.ui.screen.board.settings
 
+import androidx.compose.material.icons.rounded.WbCloudy
+import com.machadothi.blesensor.ble.WeatherInfo
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material3.CircularProgressIndicator
@@ -91,6 +93,15 @@ fun SettingsTab(viewModel: BoardViewModel) {
                     onConnect = viewModel::connectWifi,
                     onForget = viewModel::forgetWifi,
                     onMqtt = viewModel::setMqtt,
+                )
+            }
+            val weather by viewModel.weather.collectAsStateWithLifecycle()
+            weather?.let {
+                WeatherCard(
+                    it,
+                    onPlace = viewModel::setWeatherPlace,
+                    onLocate = viewModel::locateWeather,
+                    onEnabled = viewModel::setWeatherEnabled,
                 )
             }
             val calibration by viewModel.calibration.collectAsStateWithLifecycle()
@@ -407,6 +418,13 @@ private fun WifiCard(
                 WifiStatus.State.IDLE -> "Not connected"
             }
             Text(line, style = MaterialTheme.typography.bodyLarge)
+            if (wifi.state == WifiStatus.State.CONNECTED) {
+                Text(
+                    if (wifi.online) "Online: clock and weather available" else "No internet: clock and weather pages are skipped",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (wifi.online) MaterialTheme.colorScheme.onSurfaceVariant else Amber,
+                )
+            }
             if (time?.unixUtc != null) {
                 val local = java.time.Instant.ofEpochSecond(time.unixUtc)
                     .atOffset(java.time.ZoneOffset.ofTotalSeconds(time.currentOffsetMin * 60))
@@ -490,5 +508,59 @@ private fun WifiCard(
             confirmButton = { TextButton(onClick = { onConnect(ssid, password); chosen = null }) { Text("Connect") } },
             dismissButton = { TextButton(onClick = { chosen = null }) { Text("Cancel") } },
         )
+    }
+}
+
+/** Weather from Open-Meteo, fetched by the board; the place by name or automatically. */
+@Composable
+private fun WeatherCard(weather: WeatherInfo, onPlace: (String) -> Unit, onLocate: () -> Unit, onEnabled: (Boolean) -> Unit) {
+    var place by rememberSaveable(weather.place) { mutableStateOf(weather.place) }
+    GlowCard(Modifier.fillMaxWidth(), accent = Sky) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CardHeader(Icons.Rounded.WbCloudy, "Weather", Sky, Modifier.weight(1f))
+                AppSwitch(checked = weather.enabled, onCheckedChange = onEnabled)
+            }
+            if (weather.fresh && weather.temperatureC != null) {
+                Text(
+                    "%.0f °C · %s".format(weather.temperatureC, weather.description),
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                Text(
+                    "Feels like %.0f °C · today %.0f–%.0f °C · rain %d %% · wind %.0f m/s".format(
+                        weather.feelsLikeC ?: 0f, weather.lowC ?: 0f, weather.highC ?: 0f, weather.rainChancePct ?: 0, weather.windMs ?: 0f,
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    "${weather.place}${if (weather.placeIsAutomatic) " (found automatically)" else ""} · " +
+                        "updated ${weather.ageMin ?: 0} min ago · Open-Meteo",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Text(
+                    when {
+                        !weather.enabled -> "Off"
+                        !weather.online -> "Waiting for internet"
+                        weather.error != null -> weather.error
+                        else -> "Waiting for the first forecast"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = place,
+                    onValueChange = { place = it },
+                    label = { Text("Place") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(8.dp))
+                FilledTonalButton(onClick = { onPlace(place) }, enabled = place.isNotBlank() && place != weather.place) { Text("Set") }
+            }
+            TextButton(onClick = onLocate) { Text("Find automatically (from the internet address)") }
+        }
     }
 }

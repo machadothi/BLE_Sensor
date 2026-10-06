@@ -170,4 +170,14 @@ class ProtocolTest {
 
         assertEquals(false, CalibrationStatus.decode(hex("6aff")).canMeasure)   // 2-byte offset only
     }
+
+    @Test
+    fun weather() {
+        val w = WeatherInfo.decode(hex("07a00069002600014600a5007d000000000953746f636b686f6c6d0001"))
+        assertEquals(16f, w.temperatureC!!, 0.01f)
+        assertEquals("Clear sky", w.description)
+        assertEquals("Stockholm", w.place)
+        assertEquals(true, w.placeIsAutomatic && w.online && w.fresh)
+        assertEquals(null, w.error)
+    }
 }

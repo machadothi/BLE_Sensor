@@ -120,7 +120,8 @@ adapts:
 - **No Motion tab.** **Control** has only identify, reboot and factory reset.
 - **Settings:** name; **Wi-Fi, time & MQTT** (the board's network with a scan
   to choose another, its clock, MQTT on/off; the app sends the phone's time and
-  zone on every connect); display pages (and "Upside down", clock page); and
+  zone on every connect); **Weather** (current conditions, place by name or
+  found automatically, on/off); display pages (and "Upside down", clock page); and
   **Calibration**:
   the temperature offset slider, "Measure now" (the board measures its own
   self-heating, with live progress), and a daily automatic measurement.

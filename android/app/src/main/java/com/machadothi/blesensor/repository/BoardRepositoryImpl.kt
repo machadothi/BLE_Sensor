@@ -7,6 +7,7 @@ import com.machadothi.blesensor.ble.BoardConfig
 import com.machadothi.blesensor.ble.BoardConnection
 import com.machadothi.blesensor.ble.BoardInfo
 import com.machadothi.blesensor.ble.BoardTime
+import com.machadothi.blesensor.ble.WeatherInfo
 import com.machadothi.blesensor.ble.WifiStatus
 import com.machadothi.blesensor.ble.CalibrationStatus
 import com.machadothi.blesensor.ble.ButtonState
@@ -61,6 +62,7 @@ class BoardRepositoryImpl @Inject constructor(
     override val calibration = MutableStateFlow<CalibrationStatus?>(null)
     override val boardTime = MutableStateFlow<BoardTime?>(null)
     override val wifi = MutableStateFlow<WifiStatus?>(null)
+    override val weather = MutableStateFlow<WeatherInfo?>(null)
     override val hasLed = MutableStateFlow(false)
     override val hasConfig = MutableStateFlow(false)
     override val rssi = MutableStateFlow<Int?>(null)
@@ -120,6 +122,7 @@ class BoardRepositoryImpl @Inject constructor(
         calibration.value = null
         boardTime.value = null
         wifi.value = null
+        weather.value = null
         hasLed.value = false
         hasConfig.value = false
         rssi.value = null
@@ -144,6 +147,7 @@ class BoardRepositoryImpl @Inject constructor(
             runCatching { conn.write(Protocol.TIME, BoardTime.encodeFromPhone(System.currentTimeMillis(), java.util.TimeZone.getDefault())) }
             boardTime.value = runCatching { BoardTime.decode(conn.read(Protocol.TIME)) }.getOrNull()
         }
+        weather.value = if (conn.has(Protocol.WEATHER)) runCatching { WeatherInfo.decode(conn.read(Protocol.WEATHER)) }.getOrNull() else null
         wifi.value = if (conn.has(Protocol.WIFI)) runCatching { WifiStatus.decode(conn.read(Protocol.WIFI)) }.getOrNull() else null
         system.value = if (conn.has(Protocol.SYSTEM)) runCatching { SystemInfo.decode(conn.read(Protocol.SYSTEM)) }.getOrNull() else null
         // The first Env notification can take a few seconds; read one now.
@@ -180,8 +184,11 @@ class BoardRepositoryImpl @Inject constructor(
             },
             scope.launch {
                 while (isActive && conn.has(Protocol.TIME)) {
-                    delay(30_000)
+                    delay(10_000)
                     boardTime.value = runCatching { BoardTime.decode(conn.read(Protocol.TIME)) }.getOrNull() ?: boardTime.value
+                    if (conn.has(Protocol.WEATHER)) {
+                        weather.value = runCatching { WeatherInfo.decode(conn.read(Protocol.WEATHER)) }.getOrNull() ?: weather.value
+                    }
                 }
             },
             scope.launch {
@@ -269,6 +276,14 @@ class BoardRepositoryImpl @Inject constructor(
     override suspend fun forgetWifi() = requireConnection().write(Protocol.WIFI, WifiStatus.forget())
 
     override suspend fun setMqtt(enabled: Boolean) = requireConnection().write(Protocol.WIFI, WifiStatus.mqtt(enabled))
+
+    override suspend fun controlWeather(command: ByteArray) {
+        val conn = requireConnection()
+        conn.write(Protocol.WEATHER, command)
+        // A new place is looked up on the board's next loop (~1-2 s): read back after that.
+        delay(2500)
+        weather.value = runCatching { WeatherInfo.decode(conn.read(Protocol.WEATHER)) }.getOrNull() ?: weather.value
+    }
 
     override suspend fun send(command: Command) {
         requireConnection().write(Protocol.COMMAND, byteArrayOf(command.code.toByte()))

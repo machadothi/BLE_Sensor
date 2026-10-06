@@ -4,6 +4,7 @@ import com.machadothi.blesensor.ble.AirReading
 import com.machadothi.blesensor.ble.BoardConfig
 import com.machadothi.blesensor.ble.BoardInfo
 import com.machadothi.blesensor.ble.BoardTime
+import com.machadothi.blesensor.ble.WeatherInfo
 import com.machadothi.blesensor.ble.WifiStatus
 import com.machadothi.blesensor.ble.CalibrationStatus
 import com.machadothi.blesensor.ble.ButtonState
@@ -57,6 +58,7 @@ interface BoardRepository {
     /** The board's clock and Wi-Fi; null unless the board has them (ESP32 Air). */
     val boardTime: StateFlow<BoardTime?>
     val wifi: StateFlow<WifiStatus?>
+    val weather: StateFlow<WeatherInfo?>
     /** False on boards without LED/config/motion (ESP32 Air): the UI hides those parts. */
     val hasLed: StateFlow<Boolean>
     val hasConfig: StateFlow<Boolean>
@@ -83,4 +85,6 @@ interface BoardRepository {
     suspend fun connectWifi(ssid: String, password: String)
     suspend fun forgetWifi()
     suspend fun setMqtt(enabled: Boolean)
+    /** command: from WeatherInfo.setPlace / locateAutomatically / enabled / refresh. */
+    suspend fun controlWeather(command: ByteArray)
 }

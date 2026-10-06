@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import com.machadothi.blesensor.ble.BoardConfig
 import com.machadothi.blesensor.ble.Command
+import com.machadothi.blesensor.ble.WeatherInfo
 import com.machadothi.blesensor.ble.DisplayPage
 import com.machadothi.blesensor.ble.DisplayState
 import com.machadothi.blesensor.ble.LedState
@@ -42,6 +43,7 @@ class BoardViewModel @Inject constructor(
     val calibration = repository.calibration
     val boardTime = repository.boardTime
     val wifi = repository.wifi
+    val weather = repository.weather
     val hasLed = repository.hasLed
     val hasConfig = repository.hasConfig
     val rssi = repository.rssi
@@ -84,6 +86,10 @@ class BoardViewModel @Inject constructor(
     fun setMqtt(enabled: Boolean) = run(if (enabled) "MQTT on" else "MQTT off: Home Assistant shows the board as unavailable") {
         repository.setMqtt(enabled)
     }
+
+    fun setWeatherPlace(name: String) = run("Looking up $name…", quiet = true) { repository.controlWeather(WeatherInfo.setPlace(name)) }
+    fun locateWeather() = run("Finding the board's location…", quiet = true) { repository.controlWeather(WeatherInfo.locateAutomatically()) }
+    fun setWeatherEnabled(on: Boolean) = run("Saved", quiet = true) { repository.controlWeather(WeatherInfo.enabled(on)) }
 
     fun setAutoCalibration(auto: Boolean) = run("Saved", quiet = true) { repository.controlCalibration(auto, 0) }
 
