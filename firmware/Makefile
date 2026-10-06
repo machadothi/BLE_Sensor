@@ -22,7 +22,8 @@ VCOM      ?= $(firstword $(wildcard /dev/serial/by-id/usb-Silicon_Labs_J-Link_OB
 JLINK_SN  ?=
 SN_ARG    := $(if $(JLINK_SN),--serialno $(JLINK_SN),)
 
-SOURCES := $(wildcard src/*.c src/*.h) config/btconf/gatt_configuration.btconf $(PROJECT).slcp
+# Every source file, including subfolders (ble/, sensors/, home_assistant/, ...)
+SOURCES := $(shell find src -name '*.[ch]') config/btconf/gatt_configuration.btconf $(PROJECT).slcp
 
 .PHONY: all generate flash erase log clean
 

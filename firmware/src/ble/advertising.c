@@ -17,6 +17,7 @@
 #include "app_assert.h"
 #include "app_log.h"
 #include "app_config.h"
+#include "home_assistant/bthome.h"
 #include "ble/device_name.h"
 #include "sensors/sensors.h"
 #include "storage/settings.h"
@@ -93,7 +94,10 @@ void advertising_start(void)
   const ble_sensor_config_t *config = settings_config();
   uint32_t interval = (uint32_t)config->adv_interval_ms * 1000u / 625u;   // in units of 0.625 ms
 
+  // TX power can only change while nothing advertises, BTHome included.
+  bthome_pause();
   apply_tx_power(config->tx_power_dbm_x10);
+  bthome_resume();
 
   sl_status_t sc = sl_bt_advertiser_set_timing(advertising_set, interval, interval, 0, 0);
   app_assert_status(sc);

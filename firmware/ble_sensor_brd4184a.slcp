@@ -45,9 +45,15 @@ source:
   - path: src/app.c
   - path: src/sampling.c
   - path: src/ble/advertising.c
+  - path: src/home_assistant/bthome.c
   - path: src/ble/device_name.c
   - path: src/ble/gatt_service.c
   - path: src/control/button.c
+  - path: src/display/canvas.c
+  - path: src/display/display.c
+  - path: src/display/display_assets.c
+  - path: src/display/pages.c
+  - path: src/display/ssd1306.c
   - path: src/control/commands.c
   - path: src/control/led.c
   - path: src/sensors/env_sensors.c
@@ -65,9 +71,15 @@ include:
       - path: uptime.h
       - path: ble/advertising.h
       - path: ble/ble_protocol.h
+      - path: home_assistant/bthome.h
       - path: ble/device_name.h
       - path: ble/gatt_service.h
       - path: control/button.h
+      - path: display/canvas.h
+      - path: display/display.h
+      - path: display/display_assets.h
+      - path: display/pages.h
+      - path: display/ssd1306.h
       - path: control/commands.h
       - path: control/led.h
       - path: sensors/env_sensors.h
@@ -84,6 +96,9 @@ config_file:
     directory: btconf
 
 configuration:
+  # Two advertising sets: connectable (app / ble-sensor) and BTHome (Home Assistant)
+  - name: SL_BT_CONFIG_USER_ADVERTISERS
+    value: "2"
   - name: SL_STACK_SIZE
     value: "2752"
   - name: SL_BOARD_ENABLE_VCOM

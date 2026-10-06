@@ -34,7 +34,12 @@ The board runs from USB or a CR2032 coin cell.
 
 ## What you can read
 
-All readings are sampled **only while a client is connected**.
+Environmental readings (temperature, humidity, light, UV, magnetic field,
+supply, chip temperature) are sampled **all the time**, every env period. They
+go to a connected client and to the [Home Assistant broadcast](home-assistant.md).
+The IMU runs all the time too while the Home Assistant orientation broadcast is
+on (the default); otherwise only during a connection. Sound runs **only while a
+client is connected**.
 
 | Reading | Unit / resolution | Characteristic | Notes |
 |---|---|---|---|
@@ -48,7 +53,7 @@ All readings are sampled **only while a client is connected**.
 | Chip die temperature | 0.01 °C | Environment | runs warmer than ambient |
 | Acceleration X/Y/Z | 1 mg | Motion | ±2 g range |
 | Rotation rate X/Y/Z | 0.01 °/s | Motion | ±250 °/s range |
-| Orientation roll/pitch/yaw | 0.01° | Motion | fused by the SDK's IMU driver; yaw drifts (no magnetometer) |
+| Orientation roll/pitch/yaw | 0.01° | Motion | fused from accel + gyro; the gyro offset is removed, so yaw holds still on a still board. There is no magnetometer: yaw is relative to where it started, and `reset-orientation` zeroes it |
 | Button | pressed + press count | Button | debounced, notified on every press and release |
 | Board info | revision, sensors present | Info | |
 
@@ -68,7 +73,7 @@ Measured on BRD4184A: motion arrives at **104.5 / 52.5 / 20.7 Hz** with a
 | LED off / on | `ble-sensor led off`, `ble-sensor led on` | immediate |
 | LED blink | `ble-sensor led blink --on-ms 100 --off-ms 900` | each time ≥ 10 ms |
 | Identify | `ble-sensor identify` | fast blink (100/100 ms) for 3 s, then back to the LED mode |
-| Gyro calibration | `ble-sensor calibrate` | measures gyro bias; **keep the board still** (blocks ~1 s) |
+| Gyro calibration | `ble-sensor calibrate` | averages the gyro for 1 s and stores that offset in flash; **keep the board still**. Not required: the offset is also learned automatically whenever the board lies still |
 | Zero orientation | `ble-sensor reset-orientation` | roll/pitch/yaw restart from 0 |
 | Factory reset | `ble-sensor factory-reset` | default config + default name (stored) |
 | Reboot | `ble-sensor reboot` | restarts after 200 ms |
@@ -90,6 +95,8 @@ changes.
 | Advertising interval | `--adv-interval` (ms) | 20 – 10240 | 100 | **after disconnect** |
 | Hall alert threshold | `--hall-threshold` (mT) | 0.1 – 20 | 3.0 | immediately (0.5 mT hysteresis) |
 | Device name | `ble-sensor name <name>` | 1 – 20 bytes UTF-8 | `BLE-Sensor-XXXX` (last 2 address bytes) | **advertised after disconnect** |
+| Display pages | `ble-sensor display --pages …`, app Settings → Display | any of the 10 pages | all | at the display's next page change ([display.md](display.md)) |
+| Display time per reading | `ble-sensor display --page-time` (s), app Settings → Display | 1 – 60 s | 2 s | immediately |
 
 Notes:
 
@@ -117,6 +124,7 @@ little-endian**.
 | 06 | Info | read | 4 |
 | 07 | Command | write | 1 |
 | 08 | Name | read, write | 1–20 |
+| 09 | Display | read, write | 5 |
 
 Notifications need an ATT MTU ≥ 30 (Linux negotiates 247 automatically).
 
@@ -177,6 +185,29 @@ Valid bits: 0 temperature, 1 humidity, 2 lux, 3 UV, 4 hall, 5 sound,
 `u8 protocol_version` (1), `u8 board` (`0x0A` = BRD4184A, `0x0B` = BRD4184B),
 `u8 available sensor bits`, `u8 reserved`.
 
+### Display (5 bytes)
+
+| Offset | Type | Field |
+|---|---|---|
+| 0 | u8 | present: 1 if an OLED was found at boot (ignored on write) |
+| 1 | u16 | page_mask: which readings the OLED cycles through (bits below) |
+| 3 | u16 | page_ms: how long each reading stays on screen, 1000–60000 |
+
+Page bits:
+
+| Bit | Page | Bit | Page |
+|---|---|---|---|
+| 0 | temperature | 5 | sound |
+| 1 | humidity | 6 | supply |
+| 2 | light | 7 | chip temperature |
+| 3 | UV index | 8 | orientation (X/Y/Z) |
+| 4 | magnetic field | 9 | button presses |
+
+A mask with bits above 9, or a page_ms outside 1000–60000, is rejected (ATT
+error 0x13). The characteristic is
+new; clients should treat it as optional (older firmware doesn't have it).
+See [display.md](display.md).
+
 ### Command (1 byte)
 
 | Code | Command |
@@ -202,6 +233,13 @@ Valid bits: 0 temperature, 1 humidity, 2 lux, 3 UV, 4 hall, 5 sound,
   Silicon Labs).
 - **Scan response:** complete local name.
 - Connectable and undirected, at the configured interval and TX power.
+
+A second, independent broadcast carries the readings for **Home Assistant** in
+BTHome v2 format: temperature, humidity, light, UV, button presses and the
+X/Y/Z angles, in two alternating packets. It's non-connectable and comes from
+its own address
+`D8:8E:81:66:B0:DF` (the board's address with the top two bits set). The
+packet layout is in [home-assistant.md](home-assistant.md#how-it-works).
 
 Other services: Generic Access (`1800`) with a writable Device Name, and Device
 Information (`180A`): manufacturer "Silicon Labs", model "Thunderboard BG22",

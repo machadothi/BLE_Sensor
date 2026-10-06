@@ -76,6 +76,24 @@ typedef enum {
 #define LIMIT_HALL_THRESHOLD_MAX_UT   20000
 #define LIMIT_NAME_MAX_LEN            20      // bytes of UTF-8, no terminator
 
+// Display.page_mask bits: which readings the OLED shows, in this order.
+#define DISPLAY_PAGE_BIT_TEMPERATURE       (1u << 0)
+#define DISPLAY_PAGE_BIT_HUMIDITY          (1u << 1)
+#define DISPLAY_PAGE_BIT_LIGHT             (1u << 2)
+#define DISPLAY_PAGE_BIT_UV                (1u << 3)
+#define DISPLAY_PAGE_BIT_MAGNETIC          (1u << 4)
+#define DISPLAY_PAGE_BIT_SOUND             (1u << 5)
+#define DISPLAY_PAGE_BIT_SUPPLY            (1u << 6)
+#define DISPLAY_PAGE_BIT_CHIP_TEMPERATURE  (1u << 7)
+#define DISPLAY_PAGE_BIT_ORIENTATION       (1u << 8)
+#define DISPLAY_PAGE_BIT_BUTTON            (1u << 9)
+#define DISPLAY_PAGE_ALL                   0x03FFu
+
+// Display.page_ms: how long each reading stays on screen. Below 1 s the fade
+// between pages (~0.3 s) would take most of the time.
+#define LIMIT_DISPLAY_PAGE_MIN_MS          1000
+#define LIMIT_DISPLAY_PAGE_MAX_MS          60000
+
 #pragma pack(push, 1)
 
 // Environment (read, notify), sent every env period.
@@ -133,6 +151,13 @@ typedef struct {
   uint8_t  reserved;
 } ble_sensor_info_t;
 
+// Display (read, write), stored in flash. Optional OLED on the I2C bus.
+typedef struct {
+  uint8_t  present;               // 1 if a display was found at boot; ignored on write
+  uint16_t page_mask;             // DISPLAY_PAGE_BIT_* to show
+  uint16_t page_ms;               // time per reading, LIMIT_DISPLAY_PAGE_MIN/MAX_MS
+} ble_sensor_display_t;
+
 #pragma pack(pop)
 
 // Sizes must match the value lengths in gatt_configuration.btconf.
@@ -142,5 +167,6 @@ _Static_assert(sizeof(ble_sensor_button_t) == 5, "Button must be 5 bytes");
 _Static_assert(sizeof(ble_sensor_led_t) == 5, "LED must be 5 bytes");
 _Static_assert(sizeof(ble_sensor_config_t) == 12, "Config must be 12 bytes");
 _Static_assert(sizeof(ble_sensor_info_t) == 4, "Info must be 4 bytes");
+_Static_assert(sizeof(ble_sensor_display_t) == 5, "Display must be 5 bytes");
 
 #endif // BLE_PROTOCOL_H

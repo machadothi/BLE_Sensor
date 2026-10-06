@@ -42,6 +42,8 @@ class BoardConnection(context: Context) : BleManager(context) {
         ).forEach { uuid ->
             characteristics[uuid] = service.getCharacteristic(uuid) ?: return false
         }
+        // Optional: older firmware has no display support.
+        service.getCharacteristic(Protocol.DISPLAY)?.let { characteristics[Protocol.DISPLAY] = it }
         return true
     }
 
@@ -75,6 +77,8 @@ class BoardConnection(context: Context) : BleManager(context) {
     suspend fun disconnectNow() {
         disconnect().suspend()
     }
+
+    fun has(uuid: UUID): Boolean = uuid in characteristics
 
     suspend fun read(uuid: UUID): ByteArray =
         readCharacteristic(characteristics[uuid]).suspend().value ?: ByteArray(0)

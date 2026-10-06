@@ -12,6 +12,7 @@
 #include "ble/device_name.h"
 #include "control/commands.h"
 #include "control/led.h"
+#include "display/display.h"
 #include "sensors/sensors.h"
 #include "storage/settings.h"
 #include "ble/gatt_service.h"
@@ -109,6 +110,7 @@ void gatt_service_publish_button(const ble_sensor_button_t *button)
 void gatt_service_on_read_request(const sl_bt_evt_gatt_server_user_read_request_t *request)
 {
   ble_sensor_info_t info;
+  ble_sensor_display_t display_state;
   const void *value;
   size_t len;
 
@@ -133,6 +135,15 @@ void gatt_service_on_read_request(const sl_bt_evt_gatt_server_user_read_request_
     case gattdb_name:
       value = device_name_get();
       len = strlen(device_name_get());
+      break;
+    case gattdb_display:
+      display_state = (ble_sensor_display_t) {
+        .present = display_is_present() ? 1 : 0,
+        .page_mask = display_page_mask(),
+        .page_ms = display_page_ms(),
+      };
+      value = &display_state;
+      len = sizeof(display_state);
       break;
     default:
       sl_bt_gatt_server_send_user_read_response(request->connection, request->characteristic,
@@ -194,6 +205,29 @@ static uint8_t write_name(const uint8_t *data, size_t len)
   return ATT_OK;
 }
 
+static uint8_t write_display(const uint8_t *data, size_t len)
+{
+  ble_sensor_display_t display;
+  if (len != sizeof(display)) {
+    return ATT_ERR_INVALID_LENGTH;
+  }
+  memcpy(&display, data, sizeof(display));
+  if ((display.page_mask & ~DISPLAY_PAGE_ALL) != 0
+      || display.page_ms < LIMIT_DISPLAY_PAGE_MIN_MS || display.page_ms > LIMIT_DISPLAY_PAGE_MAX_MS) {
+    return ATT_ERR_VALUE_NOT_ALLOWED;
+  }
+  if (display.page_mask != display_page_mask()) {
+    display_set_page_mask(display.page_mask);
+    settings_save_display_pages(display.page_mask);
+  }
+  if (display.page_ms != display_page_ms()) {
+    display_set_page_ms(display.page_ms);
+    settings_save_display_page_ms(display.page_ms);
+  }
+  app_log_info("Display: pages 0x%03X, %u ms each" APP_LOG_NL, display.page_mask, display.page_ms);
+  return ATT_OK;
+}
+
 static void respond(const sl_bt_evt_gatt_server_user_write_request_t *request, uint8_t result)
 {
   // "Write without response" gets no answer; only write requests do.
@@ -221,6 +255,9 @@ void gatt_service_on_write_request(const sl_bt_evt_gatt_server_user_write_reques
       break;
     case gattdb_name:
       respond(request, write_name(data, len));
+      break;
+    case gattdb_display:
+      respond(request, write_display(data, len));
       break;
     case gattdb_command:
       if (len != 1) {

@@ -1,4 +1,4 @@
-tools/
+/tools/
 firmware/build/
 .venv/
 __pycache__/

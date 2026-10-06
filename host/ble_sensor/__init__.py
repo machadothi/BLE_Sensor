@@ -15,6 +15,6 @@ Modules: protocol (packet layouts), discovery (finding boards), client
 """
 
 from .client import BleSensor
-from .protocol import Button, Config, Env, Info, Led, Motion
+from .protocol import Button, Config, Display, Env, Info, Led, Motion
 
-__all__ = ["BleSensor", "Button", "Config", "Env", "Info", "Led", "Motion"]
+__all__ = ["BleSensor", "Button", "Config", "Display", "Env", "Info", "Led", "Motion"]

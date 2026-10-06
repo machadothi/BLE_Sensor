@@ -34,6 +34,19 @@ bool settings_load_name(char *name, size_t name_size);
 
 void settings_save_name(const char *name);
 
+// Gyro offset from the last calibration (°/s per axis). Returns false if the
+// board was never calibrated.
+bool settings_load_gyro_bias(float bias_dps[3]);
+void settings_save_gyro_bias(const float bias_dps[3]);
+
+// Which readings the OLED shows (DISPLAY_PAGE_BIT_*); the default if never set.
+uint16_t settings_load_display_pages(void);
+void settings_save_display_pages(uint16_t page_mask);
+
+// How long the OLED shows each reading; the default if never set.
+uint16_t settings_load_display_page_ms(void);
+void settings_save_display_page_ms(uint16_t page_ms);
+
 // Forgets everything stored and returns the live configuration to the
 // factory defaults.
 void settings_factory_reset(void);

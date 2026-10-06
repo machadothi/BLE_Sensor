@@ -73,3 +73,39 @@ empty startup value.
 115200 8N1; quit with **Ctrl+]**. If it says permission denied, add yourself to
 `dialout` (`sudo usermod -aG dialout $USER`, then log in again). Opening the
 port does not reset the board.
+
+## Home Assistant
+
+See also [home-assistant.md](home-assistant.md#troubleshooting).
+
+**Is the BTHome broadcast on air?** From this computer:
+
+```sh
+cd ~/git/BLE_Sensor && .venv/bin/python - <<'PY'
+import asyncio
+from bleak import BleakScanner
+BTHOME = "0000fcd2-0000-1000-8000-00805f9b34fb"
+async def main():
+    found = {}
+    def seen(device, adv):
+        if BTHOME in adv.service_data:
+            found[device.address] = adv.service_data[BTHOME].hex(" ")
+    async with BleakScanner(seen, bluez={"filters": {"DuplicateData": True}}):
+        await asyncio.sleep(8)
+    print(found or "no BTHome broadcast heard")
+asyncio.run(main())
+PY
+```
+
+It should print `D8:8E:81:66:B0:DF` with bytes starting `40 00 …` (BTHome v2,
+then the packet id). If the scan sometimes comes back empty, run it again:
+this computer's Bluetooth occasionally misses a whole scan.
+
+**Readings only change every few seconds.** That's the board's environment
+period (`ble-sensor config`), which the broadcast follows.
+
+## OLED display
+
+See [display.md](display.md#troubleshooting): display not found, picture
+shifted (SH1106 modules), upside down, stuck on one page.
+

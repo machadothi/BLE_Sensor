@@ -28,7 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
+import com.machadothi.blesensor.ui.components.AppSwitch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -61,6 +61,7 @@ fun SettingsTab(viewModel: BoardViewModel) {
     val saved by viewModel.config.collectAsStateWithLifecycle()
     val info by viewModel.info.collectAsStateWithLifecycle()
     val savedName by viewModel.name.collectAsStateWithLifecycle()
+    val display by viewModel.display.collectAsStateWithLifecycle()
     val current = saved ?: return
 
     // Edits are a draft until "Apply"; a new board config resets the draft.
@@ -107,7 +108,7 @@ fun SettingsTab(viewModel: BoardViewModel) {
                                 Text(sensor.label, style = MaterialTheme.typography.bodyLarge, color = if (present) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (!present) Text("Not on this board", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            Switch(
+                            AppSwitch(
                                 checked = present && sensor in draft.sensors,
                                 enabled = present,
                                 onCheckedChange = { on -> draft = draft.copy(sensors = if (on) draft.sensors + sensor else draft.sensors - sensor) },
@@ -115,6 +116,15 @@ fun SettingsTab(viewModel: BoardViewModel) {
                         }
                     }
                 }
+            }
+
+            // Only with firmware that supports the OLED display.
+            display?.let { state ->
+                DisplayCard(
+                    state, info,
+                    onPagesChanged = viewModel::setDisplayPages,
+                    onPageMsChanged = viewModel::setDisplayPageMs,
+                )
             }
 
             GlowCard(Modifier.fillMaxWidth(), accent = Sky) {

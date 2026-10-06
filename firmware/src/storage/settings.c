@@ -91,9 +91,52 @@ void settings_save_name(const char *name)
   save(NVM3_KEY_NAME, name, strlen(name), "name");
 }
 
+bool settings_load_gyro_bias(float bias_dps[3])
+{
+  return nvm3_readData(nvm3_defaultHandle, NVM3_KEY_GYRO_BIAS, bias_dps, 3 * sizeof(float)) == SL_STATUS_OK;
+}
+
+void settings_save_gyro_bias(const float bias_dps[3])
+{
+  save(NVM3_KEY_GYRO_BIAS, bias_dps, 3 * sizeof(float), "gyro calibration");
+}
+
+uint16_t settings_load_display_pages(void)
+{
+  uint16_t page_mask;
+  if (nvm3_readData(nvm3_defaultHandle, NVM3_KEY_DISPLAY_PAGES, &page_mask, sizeof(page_mask)) != SL_STATUS_OK
+      || (page_mask & ~DISPLAY_PAGE_ALL) != 0) {
+    return DEFAULT_DISPLAY_PAGES;
+  }
+  return page_mask;
+}
+
+void settings_save_display_pages(uint16_t page_mask)
+{
+  save(NVM3_KEY_DISPLAY_PAGES, &page_mask, sizeof(page_mask), "display pages");
+}
+
+uint16_t settings_load_display_page_ms(void)
+{
+  uint16_t page_ms;
+  if (nvm3_readData(nvm3_defaultHandle, NVM3_KEY_DISPLAY_PAGE_MS, &page_ms, sizeof(page_ms)) != SL_STATUS_OK
+      || !in_range(page_ms, LIMIT_DISPLAY_PAGE_MIN_MS, LIMIT_DISPLAY_PAGE_MAX_MS)) {
+    return DEFAULT_DISPLAY_PAGE_MS;
+  }
+  return page_ms;
+}
+
+void settings_save_display_page_ms(uint16_t page_ms)
+{
+  save(NVM3_KEY_DISPLAY_PAGE_MS, &page_ms, sizeof(page_ms), "display page time");
+}
+
 void settings_factory_reset(void)
 {
   nvm3_deleteObject(nvm3_defaultHandle, NVM3_KEY_CONFIG);
   nvm3_deleteObject(nvm3_defaultHandle, NVM3_KEY_NAME);
+  nvm3_deleteObject(nvm3_defaultHandle, NVM3_KEY_GYRO_BIAS);
+  nvm3_deleteObject(nvm3_defaultHandle, NVM3_KEY_DISPLAY_PAGES);
+  nvm3_deleteObject(nvm3_defaultHandle, NVM3_KEY_DISPLAY_PAGE_MS);
   config_set_defaults(&live_config);
 }

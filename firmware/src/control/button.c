@@ -7,6 +7,8 @@
 #include "sl_simple_button_instances.h"
 #include "app_timer.h"
 #include "app_config.h"
+#include "display/display.h"
+#include "home_assistant/bthome.h"
 #include "ble/gatt_service.h"
 #include "control/button.h"
 
@@ -24,9 +26,11 @@ static void publish_state(bool pressed)
 {
   if (pressed && !state.pressed) {
     state.press_count++;
+    bthome_button_pressed();
   }
   state.pressed = pressed;
   gatt_service_publish_button(&state);
+  display_publish_button(state.press_count);
 }
 
 // Runs once the contacts have been quiet for BUTTON_DEBOUNCE_MS.

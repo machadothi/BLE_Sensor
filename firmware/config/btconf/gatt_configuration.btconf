@@ -75,6 +75,11 @@
         <value length="20" type="user" variable_length="true"/>
         <properties read="true" write="true"/>
       </characteristic>
+      <!-- OLED display: whether one is connected, which readings it shows, for how long each -->
+      <characteristic id="display" name="Display" sourceId="custom.type" uuid="a7e40009-5c2b-4f1a-9d3e-6b8c0f2e1d47">
+        <value length="5" type="user" variable_length="false"/>
+        <properties read="true" write="true"/>
+      </characteristic>
     </service>
 
   </gatt>

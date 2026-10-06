@@ -27,6 +27,7 @@ CONFIG_UUID = _uuid(0x05)
 INFO_UUID = _uuid(0x06)
 COMMAND_UUID = _uuid(0x07)
 NAME_UUID = _uuid(0x08)
+DISPLAY_UUID = _uuid(0x09)
 
 # Advertised manufacturer data: company id -> (board id, protocol version)
 ADV_COMPANY_ID = 0x02FF  # Silicon Laboratories
@@ -44,6 +45,14 @@ SENSOR_BITS = {
 }
 
 LED_MODES = {"off": 0, "on": 1, "blink": 2}
+
+# Readings the optional OLED display can show, in bit order of Display.page_mask
+DISPLAY_PAGES = [
+    "temperature", "humidity", "light", "uv", "magnetic",
+    "sound", "supply", "chip-temperature", "orientation", "button",
+]
+DISPLAY_PAGES_ALL = (1 << len(DISPLAY_PAGES)) - 1
+DISPLAY_PAGE_TIME_S = (1.0, 60.0)   # allowed seconds per reading
 
 COMMANDS = {
     "calibrate": 0x01,
@@ -224,6 +233,36 @@ class Config:
     @property
     def sensors(self) -> list[str]:
         return sensor_names(self.sensor_mask)
+
+
+@dataclass
+class Display:
+    """The optional OLED: whether one is connected, which readings it shows,
+    and for how long each."""
+
+    present: bool
+    pages: list[str]      # names from DISPLAY_PAGES
+    page_time_s: float    # seconds per reading, DISPLAY_PAGE_TIME_S
+
+    # present (ignored on write), page mask, milliseconds per reading
+    FORMAT = struct.Struct("<B H H")
+
+    @classmethod
+    def decode(cls, data: bytes) -> "Display":
+        present, mask, page_ms = cls.FORMAT.unpack(data[: cls.FORMAT.size])
+        pages = [name for i, name in enumerate(DISPLAY_PAGES) if mask & (1 << i)]
+        return cls(bool(present), pages, page_ms / 1000)
+
+    def encode(self) -> bytes:
+        return self.FORMAT.pack(int(self.present), display_page_mask(self.pages), round(self.page_time_s * 1000))
+
+
+def display_page_mask(pages: list[str]) -> int:
+    """Display page mask from page names; raises ValueError for unknown names."""
+    unknown = set(pages) - set(DISPLAY_PAGES)
+    if unknown:
+        raise ValueError(f"unknown display pages: {', '.join(sorted(unknown))}")
+    return sum(1 << DISPLAY_PAGES.index(name) for name in pages)
 
 
 @dataclass

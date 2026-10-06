@@ -27,6 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -125,13 +126,26 @@ private fun Angle(label: String, value: Float?, color: Color) {
     }
 }
 
+/**
+ * Animates an angle along the short way round. Angles wrap at ±180°: going
+ * from +179° to -179° is a 2° turn, not 358°. Animating the raw numbers made
+ * the drawing spin a full turn whenever an angle crossed ±180°, so the target
+ * is "unwrapped" first: kept continuous by adding the shortest difference.
+ */
+@Composable
+private fun animateAngle(targetDeg: Float, label: String): State<Float> {
+    val unwrapped = remember { floatArrayOf(targetDeg) }
+    val shortest = ((targetDeg - unwrapped[0]) % 360f + 540f) % 360f - 180f
+    unwrapped[0] += shortest
+    return animateFloatAsState(unwrapped[0], spring(stiffness = Spring.StiffnessMediumLow), label = label)
+}
+
 /** A drawing of the Thunderboard that rotates in 3D with the board's orientation. */
 @Composable
 private fun TiltBoard(orientation: Vec3?, modifier: Modifier = Modifier) {
-    val springSpec = spring<Float>(stiffness = Spring.StiffnessMediumLow)
-    val roll by animateFloatAsState(orientation?.x ?: 0f, springSpec, label = "roll")
-    val pitch by animateFloatAsState(orientation?.y ?: 0f, springSpec, label = "pitch")
-    val yaw by animateFloatAsState(orientation?.z ?: 0f, springSpec, label = "yaw")
+    val roll by animateAngle(orientation?.x ?: 0f, "roll")
+    val pitch by animateAngle(orientation?.y ?: 0f, "pitch")
+    val yaw by animateAngle(orientation?.z ?: 0f, "yaw")
     val accent = MaterialTheme.colorScheme.primary
 
     Box(modifier, contentAlignment = Alignment.Center) {

@@ -7,6 +7,8 @@ import com.machadothi.blesensor.ble.BoardConnection
 import com.machadothi.blesensor.ble.BoardInfo
 import com.machadothi.blesensor.ble.ButtonState
 import com.machadothi.blesensor.ble.Command
+import com.machadothi.blesensor.ble.DisplayPage
+import com.machadothi.blesensor.ble.DisplayState
 import com.machadothi.blesensor.ble.Env
 import com.machadothi.blesensor.ble.LedState
 import com.machadothi.blesensor.ble.Motion
@@ -45,6 +47,7 @@ class BoardRepositoryImpl @Inject constructor(
     override val config = MutableStateFlow<BoardConfig?>(null)
     override val led = MutableStateFlow<LedState?>(null)
     override val name = MutableStateFlow<String?>(null)
+    override val display = MutableStateFlow<DisplayState?>(null)
     override val env = MutableStateFlow<Env?>(null)
     override val motion = MutableStateFlow<Motion?>(null)
     override val button = MutableStateFlow<ButtonState?>(null)
@@ -96,6 +99,7 @@ class BoardRepositoryImpl @Inject constructor(
         config.value = null
         led.value = null
         name.value = null
+        display.value = null
         env.value = null
         motion.value = null
         button.value = null
@@ -110,6 +114,7 @@ class BoardRepositoryImpl @Inject constructor(
         led.value = LedState.decode(conn.read(Protocol.LED))
         name.value = conn.read(Protocol.NAME).decodeToString()
         button.value = ButtonState.decode(conn.read(Protocol.BUTTON))
+        display.value = if (conn.has(Protocol.DISPLAY)) DisplayState.decode(conn.read(Protocol.DISPLAY)) else null
     }
 
     private fun startSession(conn: BoardConnection) {
@@ -161,6 +166,12 @@ class BoardRepositoryImpl @Inject constructor(
         val conn = requireConnection()
         conn.write(Protocol.CONFIG, config.encode())
         this.config.value = BoardConfig.decode(conn.read(Protocol.CONFIG))
+    }
+
+    override suspend fun setDisplay(display: DisplayState) {
+        this.display.value ?: error("This firmware has no display support")
+        requireConnection().write(Protocol.DISPLAY, display.encode())
+        this.display.value = display
     }
 
     override suspend fun setName(name: String) {

@@ -4,6 +4,8 @@
  *
  * This file only decides *which module handles what*. The work happens in:
  *   ble/       advertising, GATT service, device name, wire protocol
+ *   home_assistant/  BTHome broadcast that Home Assistant reads
+ *   display/   optional OLED screen showing one reading at a time
  *   control/   LED, button, commands
  *   sensors/   all sensor access
  *   storage/   settings in flash
@@ -16,6 +18,8 @@
 #include "gatt_db.h"
 #include "app_config.h"
 #include "ble/advertising.h"
+#include "display/display.h"
+#include "home_assistant/bthome.h"
 #include "ble/device_name.h"
 #include "ble/gatt_service.h"
 #include "control/button.h"
@@ -44,12 +48,8 @@ void app_apply_config(const ble_sensor_config_t *previous)
   sensors_set_hall_threshold(config->hall_threshold_ut);
 
   // TX power and advertising interval are applied by advertising_start().
-  // Sampling only runs while connected; otherwise it starts on the next
-  // connection with these values.
-  if (gatt_service_is_connected()) {
-    sensors_set_enabled(config->sensor_mask);
-    sampling_update_periods(previous);
-  }
+  sampling_apply_sensor_mask();
+  sampling_update_periods(previous);
 }
 
 // -----------------------------------------------------------------------------
@@ -60,9 +60,12 @@ static void on_boot(void)
   settings_load();
   device_name_load();       // needs the stack: the default name uses the address
   app_apply_config(NULL);
+  bthome_init();            // Home Assistant broadcast; before anything publishes to it
+  display_init(device_name_get());   // OLED, if connected
   button_init();
   advertising_init();
   advertising_start();
+  sampling_start();
 }
 
 static void on_connection_opened(const sl_bt_evt_connection_opened_t *event)
@@ -71,14 +74,16 @@ static void on_connection_opened(const sl_bt_evt_connection_opened_t *event)
   gatt_service_on_connection_opened(event->connection);
   sl_bt_connection_set_parameters(event->connection, CONN_INTERVAL_MIN, CONN_INTERVAL_MAX,
                                   CONN_PERIPHERAL_LATENCY, CONN_SUPERVISION_TIMEOUT, 0, 0xFFFF);
-  sampling_start();
+  sampling_set_connected(true);
+  display_set_connected(true);
 }
 
 static void on_connection_closed(const sl_bt_evt_connection_closed_t *event)
 {
   app_log_info("Disconnected (reason 0x%04X)" APP_LOG_NL, event->reason);
   gatt_service_on_connection_closed();
-  sampling_stop();
+  sampling_set_connected(false);
+  display_set_connected(false);
   advertising_start();      // also applies a new name, TX power or interval
 }
 

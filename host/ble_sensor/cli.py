@@ -10,7 +10,7 @@ from dataclasses import fields
 from typing import Awaitable, Callable, Optional
 
 from .client import BleSensor
-from .protocol import COMMANDS, LED_MODES, LIMITS, SENSOR_BITS, Button, Config, Env, Motion
+from .protocol import COMMANDS, DISPLAY_PAGE_TIME_S, DISPLAY_PAGES, LED_MODES, LIMITS, SENSOR_BITS, Button, Config, Env, Motion
 
 STREAMS = ["env", "motion", "button"]
 
@@ -118,6 +118,22 @@ async def cmd_config(board: BleSensor, args: argparse.Namespace) -> None:
     print_config(await board.read_config())
 
 
+async def cmd_display(board: BleSensor, args: argparse.Namespace) -> None:
+    pages = None
+    if args.pages is not None:
+        pages = DISPLAY_PAGES if args.pages == "all" else [] if args.pages == "none" else args.pages.split(",")
+    if pages is not None or args.page_time is not None:
+        try:
+            await board.set_display(pages=pages, page_time_s=args.page_time)
+        except ValueError as e:
+            raise SystemExit(str(e))
+    display = await board.read_display()
+    print(f"display:  {'connected' if display.present else 'not connected'}")
+    print(f"each reading shown for {display.page_time_s:g} s")
+    for name in DISPLAY_PAGES:
+        print(f"  [{'x' if name in display.pages else ' '}] {name}")
+
+
 async def cmd_name(board: BleSensor, args: argparse.Namespace) -> None:
     await board.set_name(args.new_name)
     print("Name saved; it is advertised after this disconnect.")
@@ -179,6 +195,11 @@ def build_parser() -> argparse.ArgumentParser:
                         help=_range_help("adv_interval_ms", "ms", "; applied after disconnect"))
     config.add_argument("--hall-threshold", dest="hall_threshold_mt", type=float,
                         help=_range_help("hall_threshold_mt", "mT"))
+
+    display = add("display", cmd_display, "show or choose what the OLED display shows")
+    display.add_argument("--pages", help=f"comma list of {','.join(DISPLAY_PAGES)}, or 'all' / 'none'")
+    display.add_argument("--page-time", type=float,
+                         help=f"seconds per reading, {DISPLAY_PAGE_TIME_S[0]:g} to {DISPLAY_PAGE_TIME_S[1]:g}")
 
     name = add("name", cmd_name, "rename the board (stored)")
     name.add_argument("new_name")

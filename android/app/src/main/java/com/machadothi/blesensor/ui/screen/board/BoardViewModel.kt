@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import com.machadothi.blesensor.ble.BoardConfig
 import com.machadothi.blesensor.ble.Command
+import com.machadothi.blesensor.ble.DisplayPage
+import com.machadothi.blesensor.ble.DisplayState
 import com.machadothi.blesensor.ble.LedState
 import com.machadothi.blesensor.repository.BoardRepository
 import com.machadothi.blesensor.ui.navigation.NavRoutes
@@ -31,6 +33,7 @@ class BoardViewModel @Inject constructor(
     val config = repository.config
     val led = repository.led
     val name = repository.name
+    val display = repository.display
     val env = repository.env
     val motion = repository.motion
     val button = repository.button
@@ -54,6 +57,15 @@ class BoardViewModel @Inject constructor(
     fun setConfig(config: BoardConfig) = run("Settings saved on the board") { repository.setConfig(config) }
 
     fun setName(name: String) = run("Name saved; it's advertised after you disconnect") { repository.setName(name) }
+
+    fun setDisplayPages(pages: Set<DisplayPage>) = updateDisplay { it.copy(pages = pages) }
+
+    fun setDisplayPageMs(pageMs: Int) = updateDisplay { it.copy(pageMs = pageMs) }
+
+    private fun updateDisplay(change: (DisplayState) -> DisplayState) {
+        val current = display.value ?: return
+        run("Display updated", quiet = true) { repository.setDisplay(change(current)) }
+    }
 
     fun send(command: Command) = run(
         when (command) {

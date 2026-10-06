@@ -8,15 +8,38 @@ Everything except one udev rule is installed **inside the repo folder**:
 `tools/` (toolchain, git-ignored) and `.venv/` (Python, git-ignored). Nothing
 else on the system changes, and deleting the folder removes everything.
 
+- [Downloads at a glance](#downloads-at-a-glance)
 - [1. What you need and why](#1-what-you-need-and-why)
 - [2. Download the toolchain into tools/](#2-download-the-toolchain-into-tools)
 - [3. Give your user access to the J-Link (sudo, once)](#3-give-your-user-access-to-the-j-link)
 - [4. Python environment](#4-python-environment)
 - [5. Identify the board and back up its flash](#5-identify-the-board-and-back-up-its-flash)
 - [6. Build, flash, check](#6-build-flash-check)
-- [7. If a download no longer exists](#7-if-a-download-no-longer-exists)
+- [7. Phone app: Android SDK](#7-phone-app-android-sdk)
+- [8. Home Assistant](#8-home-assistant)
+- [9. If a download no longer exists](#9-if-a-download-no-longer-exists)
 
 ---
+
+## Downloads at a glance
+
+Everything this project downloads, in one place. Sections below explain each
+one and give the exact commands.
+
+| What | For | From | Where it goes | Step |
+|---|---|---|---|---|
+| Simplicity SDK v2025.6.3 | firmware | <https://github.com/SiliconLabs/simplicity_sdk/releases/download/v2025.6.3/simplicity-sdk.zip> | `tools/simplicity_sdk` | [2](#2-download-the-toolchain-into-tools) |
+| slc-cli | firmware | <https://www.silabs.com/documents/public/software/slc_cli_linux.zip> (use `wget`) | `tools/slc_cli` | [2](#2-download-the-toolchain-into-tools) |
+| Simplicity Commander | flashing | <https://www.silabs.com/documents/public/software/SimplicityCommander-Linux.zip> (use `wget`) | `tools/commander-cli` | [2](#2-download-the-toolchain-into-tools) |
+| Arm GNU Toolchain 12.2.Rel1 | firmware | <https://developer.arm.com/-/media/Files/downloads/gnu/12.2.rel1/binrel/arm-gnu-toolchain-12.2.rel1-x86_64-arm-none-eabi.tar.xz> | `tools/gcc` | [2](#2-download-the-toolchain-into-tools) |
+| Temurin JDK 21 | slc + Android build | <https://api.adoptium.net/v3/binary/latest/21/ga/linux/x64/jdk/hotspot/normal/eclipse> | `tools/jdk` | [2](#2-download-the-toolchain-into-tools) |
+| bleak, pyserial (PyPI) | Python client, `make log` | `pip install -e host` | `.venv` | [4](#4-python-environment) |
+| Android SDK command-line tools 23.0 | phone app | <https://dl.google.com/android/repository/commandlinetools-linux-16111833_latest.zip> (newest: <https://developer.android.com/studio#command-line-tools-only>) | `~/Android/Sdk/cmdline-tools/latest` | [7](#7-phone-app-android-sdk) |
+| Android platform 37.2, build-tools 37.0.0, platform-tools (adb) | phone app | `sdkmanager` (Google) | `~/Android/Sdk` | [7](#7-phone-app-android-sdk) |
+| Gradle 9.8 | phone app | automatic: `./gradlew` fetches it from services.gradle.org | `~/.gradle/wrapper` | [7](#7-phone-app-android-sdk) |
+| App libraries (Compose, Hilt, Nordic BLE, …) | phone app | automatic: Gradle fetches them from Google Maven and Maven Central | `~/.gradle/caches` | [7](#7-phone-app-android-sdk) |
+| — | Home Assistant | nothing: BTHome is built into Home Assistant | — | [8](#8-home-assistant) |
+| Pillow + DejaVu fonts (optional) | only to regenerate the OLED fonts/icons | `sudo apt install python3-pil fonts-dejavu-core` | system | [display.md](display.md#changing-the-look) |
 
 ## 1. What you need and why
 
@@ -29,6 +52,16 @@ else on the system changes, and deleting the folder removes everything.
 | **Simplicity Commander** (CLI) | 1v25p0b1995 | Flashes the `.hex`, reads/erases flash, identifies the kit. It talks to the board's on-board **J-Link** debugger and bundles SEGGER's J-Link library, so no separate SEGGER install is needed. | 90 MB |
 | **bleak** (Python) | 3.0.x | Cross-platform Bluetooth LE library used by the `host/ble_sensor` package. On Linux it talks to BlueZ over D-Bus. | small |
 | **pyserial** (Python) | ≥ 3.5 | Only for `make log` (reading the board's UART log). | small |
+
+Only for the phone app (see [7](#7-phone-app-android-sdk)):
+
+| Tool | Version used | What it does here | Size |
+|---|---|---|---|
+| **Android SDK command-line tools** | 12.0 (23.0 current) | `sdkmanager`, which installs the rest of the Android SDK | 150 MB |
+| **Android SDK Platform** | android-37.2 | The Android API the app compiles against (compileSdk 37) | 170 MB |
+| **Android SDK Build-Tools** | 37.0.0 | `aapt2`, `d8`, `apksigner`: turn the code into a signed APK | 150 MB |
+| **Android SDK Platform-Tools** | 37.0.1 | `adb`: installs the app on the phone over USB | 20 MB |
+| **Gradle** + app libraries | 9.8 | Build tool and the app's dependencies; downloaded automatically on the first build | `~/.gradle`: several GB, shared by all Android projects (5.6 GB here) |
 
 System prerequisites (Ubuntu packages, normally already present): `wget`,
 `unzip`, `tar`, `bzip2`, `xz-utils`, `make`, `python3`, `python3-venv`,
@@ -202,7 +235,46 @@ All Makefile targets:
 | `BOARD=brd4184b` | build for the other revision |
 | `JLINK_SN=440174227` | choose a J-Link when several are plugged in |
 
-## 7. If a download no longer exists
+## 7. Phone app: Android SDK
+
+Only needed for the phone app in `android/`. The app's own guide is
+[android-app.md](android-app.md).
+
+The Android SDK lives outside the repo, in `~/Android/Sdk` (Android Studio
+uses the same place). It isn't needed for the firmware or the Python client.
+
+```sh
+# 1. Command-line tools (contain sdkmanager). Newest link:
+#    https://developer.android.com/studio#command-line-tools-only
+mkdir -p ~/Android/Sdk/cmdline-tools && cd ~/Android/Sdk/cmdline-tools
+wget -O tools.zip https://dl.google.com/android/repository/commandlinetools-linux-16111833_latest.zip
+unzip -q tools.zip && mv cmdline-tools latest && rm tools.zip
+
+# 2. The SDK parts the app needs (sdkmanager needs a JDK; reuse the project's)
+export JAVA_HOME=~/git/BLE_Sensor/tools/jdk
+yes | ~/Android/Sdk/cmdline-tools/latest/bin/sdkmanager --licenses
+~/Android/Sdk/cmdline-tools/latest/bin/sdkmanager \
+    "platforms;android-37.2" "build-tools;37.0.0" "platform-tools"
+
+# 3. Tell Gradle where the SDK is (file is git-ignored)
+echo "sdk.dir=$HOME/Android/Sdk" > ~/git/BLE_Sensor/android/local.properties
+
+# 4. Build: the first run downloads Gradle 9.8 and every library (a few minutes)
+cd ~/git/BLE_Sensor/android && ./gradlew assembleDebug
+```
+
+To install on a phone you also need USB access for `adb`:
+`sudo sh android/setup_adb_udev.sh`, then replug the phone. It covers Google
+Pixel phones (vendor 18d1). For another brand, change `idVendor` in the
+script; `lsusb` shows it. Details: [android-app.md](android-app.md#build-and-install).
+
+## 8. Home Assistant
+
+Nothing to download or install. The firmware broadcasts in the BTHome format,
+which Home Assistant reads with its built-in Bluetooth and BTHome integrations.
+See [home-assistant.md](home-assistant.md).
+
+## 9. If a download no longer exists
 
 Vendors move, rename or gate downloads. Protect yourself once:
 
@@ -231,3 +303,6 @@ Vendors move, rename or gate downloads. Protect yourself once:
      ble_sensor_brd4184a.hex`, `r`, `g`).
    - slc and Commander exist only on silabs.com and inside Simplicity Studio,
      which is why archiving them matters most.
+   - Android: Google keeps old SDK packages online for years. To be safe,
+     archive `~/Android/Sdk` and `~/.gradle` together with `tools/`; with them a
+     fresh machine can build the app offline (`./gradlew --offline assembleDebug`).

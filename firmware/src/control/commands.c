@@ -10,6 +10,7 @@
 #include "app_config.h"
 #include "ble/device_name.h"
 #include "control/led.h"
+#include "display/display.h"
 #include "sensors/sensors.h"
 #include "storage/settings.h"
 #include "control/commands.h"
@@ -28,6 +29,8 @@ static void factory_reset(void)
   ble_sensor_config_t previous = *settings_config();
   settings_factory_reset();
   device_name_reset();
+  display_set_page_mask(DEFAULT_DISPLAY_PAGES);
+  display_set_page_ms(DEFAULT_DISPLAY_PAGE_MS);
   app_apply_config(&previous);
   app_log_info("Factory reset" APP_LOG_NL);
 }

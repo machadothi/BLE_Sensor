@@ -4,6 +4,8 @@ import com.machadothi.blesensor.ble.BoardConfig
 import com.machadothi.blesensor.ble.BoardInfo
 import com.machadothi.blesensor.ble.ButtonState
 import com.machadothi.blesensor.ble.Command
+import com.machadothi.blesensor.ble.DisplayPage
+import com.machadothi.blesensor.ble.DisplayState
 import com.machadothi.blesensor.ble.Env
 import com.machadothi.blesensor.ble.LedState
 import com.machadothi.blesensor.ble.Motion
@@ -34,6 +36,8 @@ interface BoardRepository {
     val config: StateFlow<BoardConfig?>
     val led: StateFlow<LedState?>
     val name: StateFlow<String?>
+    /** Null if the firmware has no display support. */
+    val display: StateFlow<DisplayState?>
     val env: StateFlow<Env?>
     val motion: StateFlow<Motion?>
     val button: StateFlow<ButtonState?>
@@ -50,5 +54,7 @@ interface BoardRepository {
     suspend fun setLed(led: LedState)
     suspend fun setConfig(config: BoardConfig)
     suspend fun setName(name: String)
+    /** What the OLED shows and for how long each reading (present is ignored). */
+    suspend fun setDisplay(display: DisplayState)
     suspend fun send(command: Command)
 }

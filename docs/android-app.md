@@ -23,7 +23,7 @@ BRD4184A board.
 | Motion | A 3D drawing of the board that tilts with roll/pitch/yaw, live accelerometer and gyro bars, **Calibrate gyro** and **Zero angles**. |
 | Charts | Scrolling history for temperature, humidity, light, magnetic field, \|acceleration\| and \|rotation rate\| (last 240 env / 400 motion samples). |
 | Control | LED off/on/blink with on/off-time sliders and an orb that blinks in the same rhythm; Identify, Reboot, Factory reset (with confirmation). |
-| Settings | Name; per-sensor switches (sensors the board lacks are greyed out); environment period, motion rate, magnet threshold, TX power, advertising interval. Edits stay a draft until **Apply**; a bar slides up showing how many changes are pending. Out-of-range values can't be entered, because the sliders are bounded by the protocol limits. |
+| Settings | **Display** card (if the firmware supports it): a slider for how long each reading stays on screen (1–60 s), one switch per reading the OLED shows, applied immediately, *All*/*None*; readings the board can't show are greyed out, and it says so when no display is connected. Name; per-sensor switches (sensors the board lacks are greyed out); environment period, motion rate, magnet threshold, TX power, advertising interval. Edits stay a draft until **Apply**; a bar slides up showing how many changes are pending. Out-of-range values can't be entered, because the sliders are bounded by the protocol limits. |
 
 The top bar shows the board's name, revision and live signal strength. If
 the link drops, a screen offers **Reconnect**. Leaving the board screen
@@ -36,7 +36,7 @@ Requirements, all already on this machine:
 | What | Where | Notes |
 |---|---|---|
 | JDK 17+ | `tools/jdk` (the one slc uses) | `export JAVA_HOME=~/git/BLE_Sensor/tools/jdk` |
-| Android SDK | `~/Android/Sdk` | platform **android-37.2**, build-tools 37, platform-tools. Install with `cmdline-tools/latest/bin/sdkmanager "platforms;android-37.2" "build-tools;37.0.0" "platform-tools"`. |
+| Android SDK | `~/Android/Sdk` | command-line tools + platform **android-37.2**, build-tools 37.0.0, platform-tools. Download links and commands: [setup.md § 7](setup.md#7-phone-app-android-sdk). |
 | Gradle 9.8 | downloaded by `./gradlew` on first run | |
 
 `android/local.properties` (git-ignored) holds `sdk.dir=/home/<you>/Android/Sdk`.
@@ -78,7 +78,7 @@ minSdk 26.
 | `ui/navigation/` | Routes (Permissions → Scan → Board) with slide/fade transitions |
 | `ui/screen/scan/` | Radar + list, `ScanViewModel` |
 | `ui/screen/board/` | `BoardScreen` (top bar, tabs, connecting/lost states) and `BoardViewModel`, shared by all tabs; it turns write errors into snackbar messages (ATT 0x13 → "The board rejected that value") |
-| `ui/screen/board/{live,motion,charts,control,settings}/` | The five tabs |
+| `ui/screen/board/{live,motion,charts,control,settings}/` | The five tabs; `settings/DisplayCard.kt` is the OLED page selection |
 | `ui/components/` | `GlowCard`, `AnimatedNumber`, `Sparkline`, `SignalBars`, `LedOrb`, `LabeledSlider` (logarithmic option), dialogs |
 | `ui/theme/` | Dark instrument palette (always used; a light scheme exists in `Theme.kt`, switch `darkTheme` to follow the phone) |
 | `res/drawable/ic_launcher_*.xml` | Adaptive launcher icon: chip with signal arcs on a navy→teal gradient, plus a monochrome layer for themed icons |

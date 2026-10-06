@@ -100,10 +100,12 @@ So the application is purely **event-driven**: everything happens in
 |---|---|
 | `src/app.c` / `app.h` | `app_init`, `app_process_action`, `sl_bt_on_event` dispatch, `app_apply_config()` (pushes a new config to sensors and timers) |
 | `src/app_config.h` | **every tunable value**, see the next section |
-| `src/sampling.c` | the env and motion timers: first sample after connect, period changes |
+| `src/sampling.c` | the env timer (always running) and the motion timer (only while connected), period changes; feeds the GATT service and the Home Assistant broadcast |
 | `src/uptime.h` | milliseconds since boot (packet timestamps) |
 | `src/ble/ble_protocol.h` | **the wire contract**: service UUID, packed structs, sensor/valid bits, limits, command codes, size checks. `host/ble_sensor/protocol.py` mirrors it. |
-| `src/ble/advertising.c` | advertising and scan-response packets, TX power, interval |
+| `src/ble/advertising.c` | the connectable advertisement and scan response (for the app / `ble-sensor`), TX power, interval |
+| `src/display/` | **the optional OLED**: `display.c` (page rotation, the only entry point), `pages.c` (screens), `canvas.c` (drawing), `ssd1306.c` (controller), `display_assets.c` (generated fonts/icons). Switch: `DISPLAY_ENABLED`. Guide: [display.md](display.md) |
+| `src/home_assistant/bthome.c` | **everything for Home Assistant**: a second, non-connectable broadcast in BTHome format, with its own fixed address. Switch: `HOME_ASSISTANT_ENABLED`. Guide: [home-assistant.md](home-assistant.md) |
 | `src/ble/gatt_service.c` | connection handle, subscriptions, notifications (`gatt_service_publish_*`), one read/write handler per characteristic, ATT errors |
 | `src/ble/device_name.c` | the name: stored or default, GAP and custom characteristic kept in sync |
 | `src/control/led.c` | off/on/blink and the identify overlay |
@@ -126,10 +128,12 @@ Who calls whom:
 | Module | Calls into |
 |---|---|
 | `app.c` | everything below except `control/led`, `control/commands` |
-| `sampling` | `sensors`, `gatt_service` (publish), `settings` |
+| `sampling` | `sensors`, `gatt_service` (publish), `bthome` (publish), `display` (publish), `settings` |
 | `ble/gatt_service` | `led`, `commands`, `device_name`, `sensors`, `settings`, `app_apply_config()` |
-| `ble/advertising` | `device_name`, `sensors` (board id), `settings` |
-| `control/button` | `gatt_service` (publish) |
+| `ble/advertising` | `device_name`, `sensors` (board id), `settings`, `bthome` (paused around TX power changes) |
+| `home_assistant/bthome` | only the Bluetooth stack |
+| `control/button` | `gatt_service` (publish), `bthome` (press event), `display` (press count) |
+| `display/display` | `ssd1306` (I2C), `pages`, `settings` (stored page choice) |
 | `control/commands` | `led`, `device_name`, `sensors`, `settings`, `app_apply_config()` |
 | `ble/device_name` | `settings` |
 | `sensors/sensors` | only `env_sensors`, `imu`, `sound` |
@@ -160,8 +164,10 @@ why it is what it is. Change it and run `make flash`.
 | Factory defaults | `DEFAULT_ENV_PERIOD_MS`, `DEFAULT_MOTION_PERIOD_MS`, `DEFAULT_TX_POWER_DBM_X10`, `DEFAULT_NAME_PREFIX`, LED blink times |
 | Timing | `ENV_FIRST_SAMPLE_DELAY_MS`, `BUTTON_DEBOUNCE_MS`, `IDENTIFY_DURATION_MS`, `REBOOT_DELAY_MS`, `LED_BLINK_MIN_MS` |
 | Bluetooth link | `CONN_INTERVAL_MIN/MAX`, `CONN_SUPERVISION_TIMEOUT`, `ADV_COMPANY_ID` |
-| Sensors | hall range/hysteresis, Si7021/Si1133 conversion times, power-up delays, microphone rate/buffer/smoothing, supply averaging |
-| Storage | NVM3 keys |
+| Sensors | hall range/hysteresis, Si7021/Si1133 conversion times, gyro offset calibration and still-detection, yaw deadband, power-up delays, microphone rate/buffer/smoothing, supply averaging |
+| Display | `DISPLAY_ENABLED`, `DEFAULT_DISPLAY_PAGE_MS`, `DISPLAY_REFRESH_MS`, `DISPLAY_CONTRAST`, `DEFAULT_DISPLAY_PAGES`, `DISPLAY_COLUMN_OFFSET`, `DISPLAY_ROTATE_180` |
+| Home Assistant | `HOME_ASSISTANT_ENABLED`, `HOME_ASSISTANT_SEND_ORIENTATION`, `HOME_ASSISTANT_PACKET_SWITCH_MS`, `HOME_ASSISTANT_BROADCAST_INTERVAL_MS` |
+| Storage | NVM3 keys (config, name, gyro calibration, display pages, display page time) |
 
 What is deliberately **not** in it:
 
@@ -180,19 +186,26 @@ it: run `ble-sensor factory-reset` to pick up the new defaults.
 ## Runtime behaviour
 
 ```
-boot ─► load config + name from NVM3 ─► advertise (name, service UUID, mfg data)
-            │
-   client connects ─► request 7.5–15 ms connection interval
-            │         enable sensors per sensor_mask
-            │         start env timer (first sample after 250 ms) + motion timer
-            │
+boot ─► load config + name from NVM3
+            ├─► start BTHome broadcast (Home Assistant), own address D8:…
+            ├─► advertise (name, service UUID, mfg data) for the app / ble-sensor
+            └─► start env timer (env sensors run from now on), and the motion
+                timer if Home Assistant gets the angles (mic stays off)
+
    every env_period ─► read RHT/light/hall/supply/die temp ─► store in GATT DB,
-            │           notify if the client subscribed
-   every motion_period/2 ─► if IMU has a new sample ─► store + notify
-   button edge ─► ISR ─► sl_bt_external_signal ─► 25 ms debounce ─► store + notify
-            │
-   client disconnects ─► stop timers, power down IMU/mic ─► apply TX power,
+                       notify a subscribed client, hand to the BTHome broadcast
+   every 1 s ─► BTHome broadcast switches between its environment and
+                orientation packets (new packet id each time)
+   button edge ─► ISR ─► sl_bt_external_signal ─► 25 ms debounce
+                       ─► store + notify, BTHome "press" event
+
+   client connects ─► request 7.5–15 ms connection interval
+            │         power up IMU (and mic on B), start motion timer
+   every motion_period/2 ─► if IMU has a new sample ─► remove gyro offset, fuse,
+            │                store + notify
+   client disconnects ─► stop motion timer, power down IMU/mic ─► apply TX power,
                          advertising interval, name ─► advertise again
+                         (the BTHome broadcast never stops)
 ```
 
 The UART log (`make log`, 115200 8N1) prints boot, sensor probe, connections,
@@ -200,8 +213,11 @@ MTU, config changes and errors.
 
 ## Design decisions and why
 
-- **Sensors only run while connected.** This saves power, and nobody can read
-  values otherwise.
+- **Environmental sensors always run; the microphone only while connected;
+  the IMU depends.** The always-on part feeds Home Assistant. The IMU runs
+  continuously while Home Assistant gets the angles
+  (`HOME_ASSISTANT_SEND_ORIENTATION`), otherwise only during a connection,
+  because it draws the most current.
 - **Shared sensor power on BRD4184A.** Si7021, Si1133 and Si7210 share one
   enable pin (`PA4`), so they are powered once at boot. Clearing them from
   `sensor_mask` only stops sampling. The IMU and microphone have their own
@@ -227,6 +243,17 @@ MTU, config changes and errors.
   BlueZ report every advertisement (see [host-client.md](host-client.md#bluez-quirks)).
 - **Custom Name characteristic.** BlueZ hides the standard GAP Device Name from
   clients, so the name is also exposed as `a7e40008`. Both stay in sync.
+- **Two advertising sets.** The connectable one (app, `ble-sensor`) and the
+  BTHome one (Home Assistant) are independent; `SL_BT_CONFIG_USER_ADVERTISERS`
+  is 2 in both `.slcp` files. The BTHome set uses its own static random
+  address, because many scanners drop repeated reports from one address and
+  then missed one of the two broadcasts.
+- **Our own IMU fusion step.** The SDK's fusion never removes the gyro offset
+  (its `sl_imu_calibrate_gyro()` only restarts the chip), and nothing corrects
+  yaw because the ICM-20648 has no magnetometer, so yaw drifted on a still
+  board. `sensors/imu.c` runs the SDK's fusion functions on its own state,
+  with the offset subtracted. The offset is learned by the Calibrate command
+  (stored in flash) and refined automatically whenever the board lies still.
 - **No bootloader / no OTA.** The app is linked at `0x0` and runs standalone.
   Adding the `in_place_ota_dfu` component would move it to `0x12000` and
   require a Gecko bootloader + apploader in flash.

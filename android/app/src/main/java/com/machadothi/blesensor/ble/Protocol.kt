@@ -23,6 +23,7 @@ object Protocol {
     val INFO: UUID = uuid(0x06)
     val COMMAND: UUID = uuid(0x07)
     val NAME: UUID = uuid(0x08)
+    val DISPLAY: UUID = uuid(0x09)   // optional: firmware without it has no OLED support
 
     /** Advertised manufacturer data: company id, then board id and protocol version. */
     const val ADV_COMPANY_ID = 0x02FF
@@ -51,6 +52,53 @@ enum class Sensor(val bit: Int, val label: String) {
     }
 }
 
+/** Readings the optional OLED can show, in the bit order of Display.page_mask. */
+enum class DisplayPage(val label: String) {
+    TEMPERATURE("Temperature"),
+    HUMIDITY("Humidity"),
+    LIGHT("Light"),
+    UV("UV index"),
+    MAGNETIC("Magnetic field"),
+    SOUND("Sound"),
+    SUPPLY("Supply voltage"),
+    CHIP_TEMPERATURE("Chip temperature"),
+    ORIENTATION("Orientation (X/Y/Z)"),
+    BUTTON("Button presses");
+
+    val bit: Int get() = 1 shl ordinal
+
+    /** Whether this board can show the page at all (sensor present). */
+    fun isAvailableOn(info: BoardInfo): Boolean = when (this) {
+        TEMPERATURE, HUMIDITY -> Sensor.RHT in info.available
+        LIGHT -> Sensor.LIGHT in info.available
+        UV -> Sensor.LIGHT in info.available && info.board == "BRD4184A"
+        MAGNETIC -> Sensor.HALL in info.available
+        SOUND -> Sensor.SOUND in info.available
+        SUPPLY -> Sensor.SUPPLY in info.available
+        ORIENTATION -> Sensor.IMU in info.available
+        CHIP_TEMPERATURE, BUTTON -> true
+    }
+}
+
+/** The optional OLED display: whether one is connected, what it shows, for how long each. */
+data class DisplayState(val present: Boolean, val pages: Set<DisplayPage>, val pageMs: Int) {
+    fun encode(): ByteArray = le(ByteArray(5)).apply {
+        put(if (present) 1 else 0)
+        putShort(pages.fold(0) { mask, page -> mask or page.bit }.toShort())
+        putShort(pageMs.toShort())
+    }.array()
+
+    companion object {
+        fun decode(bytes: ByteArray): DisplayState {
+            val b = le(bytes)
+            val present = b.u8() != 0
+            val mask = b.u16()
+            val pageMs = b.u16()
+            return DisplayState(present, DisplayPage.entries.filter { mask and it.bit != 0 }.toSet(), pageMs)
+        }
+    }
+}
+
 enum class LedMode(val code: Int) {
     OFF(0), ON(1), BLINK(2);
 
@@ -74,6 +122,7 @@ object Limits {
     val txPowerDbm = -30f..6f
     val advIntervalMs = 20..10_240
     val hallThresholdMt = 0.1f..20f
+    val displayPageMs = 1_000..60_000
     const val LED_BLINK_MIN_MS = 10
 }
 

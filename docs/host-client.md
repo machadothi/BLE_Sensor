@@ -56,6 +56,9 @@ ble-sensor -a 58:8E:81:66:B0:DF led on
 | | `ble-sensor config --tx-power 6 --adv-interval 50` | Radio settings (applied after disconnect) |
 | | `ble-sensor config --hall-threshold 5` | Hall alert threshold in mT |
 | `name` | `ble-sensor name Player-One` | Rename (stored; advertised after disconnect) |
+| `display` | `ble-sensor display` | OLED connected? Which readings it shows |
+| | `ble-sensor display --pages temperature,humidity,orientation` | Choose the readings (`all` / `none` also work); see [display.md](display.md) |
+| | `ble-sensor display --page-time 5` | Seconds each reading stays on screen (1–60) |
 | `calibrate` | `ble-sensor calibrate` | Gyro bias calibration; keep the board still |
 | `reset-orientation` | `ble-sensor reset-orientation` | Zero roll/pitch/yaw |
 | `identify` | `ble-sensor identify` | Fast LED blink for 3 s |
@@ -103,6 +106,7 @@ API summary (all methods are `async`):
 | `read_led()` / `set_led(mode, on_ms, off_ms)` | LED state / change it |
 | `read_config()` / `set_config(sensors=None, **fields)` | `Config(sensor_mask, env_period_ms, motion_period_ms, tx_power_dbm, adv_interval_ms, hall_threshold_mt)`; `set_config` changes only the fields passed |
 | `read_name()` / `set_name(name)` | device name |
+| `read_display()` / `set_display(pages=None, page_time_s=None)` | `Display(present, pages, page_time_s)`: the OLED, which readings it shows (names from `protocol.DISPLAY_PAGES`) and seconds per reading; `set_display` changes only what you pass |
 | `command(name)` | `"calibrate"`, `"factory-reset"`, `"reboot"`, `"identify"`, `"reset-orientation"` |
 | `on_env(cb)` / `on_motion(cb)` / `on_button(cb)` | subscribe; `cb` gets the decoded object, and may be a plain or `async` function |
 | `disconnect()` | also called automatically by `async with` |

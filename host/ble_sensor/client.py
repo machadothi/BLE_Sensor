@@ -12,8 +12,8 @@ from bleak.backends.scanner import AdvertisementData
 
 from . import discovery
 from .protocol import (
-    BUTTON_UUID, COMMAND_UUID, COMMANDS, CONFIG_UUID, ENV_UUID, INFO_UUID, LED_UUID,
-    MOTION_UUID, NAME_MAX_LEN, NAME_UUID, Button, Config, Env, Info, Led, Motion, sensor_mask,
+    BUTTON_UUID, COMMAND_UUID, COMMANDS, CONFIG_UUID, DISPLAY_UUID, ENV_UUID, INFO_UUID, LED_UUID,
+    MOTION_UUID, NAME_MAX_LEN, NAME_UUID, Button, Config, Display, Env, Info, Led, Motion, sensor_mask,
 )
 
 CONNECT_ATTEMPTS = 2
@@ -106,6 +106,10 @@ class BleSensor:
     async def read_name(self) -> str:
         return (await self._read(NAME_UUID)).decode(errors="replace")
 
+    async def read_display(self) -> Display:
+        """Whether an OLED is connected and which readings it shows."""
+        return Display.decode(await self._read(DISPLAY_UUID))
+
     # --- control and configuration --------------------------------------
 
     async def _write(self, uuid: str, data: bytes) -> None:
@@ -134,6 +138,17 @@ class BleSensor:
         if not 0 < len(raw) <= NAME_MAX_LEN:
             raise ValueError(f"name must be 1-{NAME_MAX_LEN} bytes")
         await self._write(NAME_UUID, raw)
+
+    async def set_display(self, pages: Optional[list[str]] = None, page_time_s: Optional[float] = None) -> Display:
+        """Changes what the OLED shows: the readings (names from
+        protocol.DISPLAY_PAGES) and/or seconds per reading. Stored on the board."""
+        display = await self.read_display()
+        if pages is not None:
+            display.pages = pages
+        if page_time_s is not None:
+            display.page_time_s = page_time_s
+        await self._write(DISPLAY_UUID, display.encode())
+        return display
 
     async def command(self, name: str) -> None:
         """One of protocol.COMMANDS: calibrate, factory-reset, reboot,

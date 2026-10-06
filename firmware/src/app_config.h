@@ -88,6 +88,50 @@
 #define ADV_COMPANY_ID                  0x02FF
 
 // -----------------------------------------------------------------------------
+// Home Assistant
+// The board broadcasts its readings in the BTHome format, which Home
+// Assistant's BTHome integration picks up by itself (read-only, no pairing).
+// Code: home_assistant/bthome.c. Guide: docs/home-assistant.md.
+
+// 1 = broadcast for Home Assistant, 0 = compile the feature out.
+#define HOME_ASSISTANT_ENABLED          1
+
+// 1 = also send the X/Y/Z orientation angles (roll, pitch, yaw). This keeps
+// the IMU powered all the time (fine on USB, drains a coin cell much faster).
+#define HOME_ASSISTANT_SEND_ORIENTATION 1
+
+// One packet can't hold everything, so the broadcast alternates an
+// environment packet and an orientation packet every PACKET_SWITCH_MS.
+// Within that time each packet is repeated every BROADCAST_INTERVAL_MS, so a
+// receiver that misses one copy still gets another.
+#define HOME_ASSISTANT_PACKET_SWITCH_MS       1000
+#define HOME_ASSISTANT_BROADCAST_INTERVAL_MS  250
+
+// -----------------------------------------------------------------------------
+// Display
+// Optional SSD1306 128x64 OLED on the board's I2C bus (EXP header pin 15 =
+// SCL, 16 = SDA, 20 = 3.3 V, 1 = GND), found automatically at 0x3C or 0x3D.
+// It shows one reading at a time. Code: display/. Guide: docs/display.md.
+
+// 1 = drive the display (nothing happens if none is connected), 0 = compile out.
+#define DISPLAY_ENABLED                 1
+
+#define DEFAULT_DISPLAY_PAGE_MS         2000    // time per reading; the app can change it
+#define DISPLAY_REFRESH_MS              500     // redraw rate of the shown value
+#define DISPLAY_SPLASH_MS               1500    // startup screen
+#define DISPLAY_CONTRAST                0xCF    // brightness, 0x00-0xFF
+
+// Readings shown by default; the app can change this (stored in flash).
+#define DEFAULT_DISPLAY_PAGES           DISPLAY_PAGE_ALL
+
+// Hardware variants:
+// many "SSD1306" modules are really SH1106 (132 columns): if the picture is
+// shifted by 2 pixels or shows a stripe on one side, set the offset to 2.
+#define DISPLAY_COLUMN_OFFSET           0
+// 1 = turn the picture upside down (pins on the other side).
+#define DISPLAY_ROTATE_180              0
+
+// -----------------------------------------------------------------------------
 // Sensors
 
 // Si7210 hall sensor: measurement range and alert hysteresis.
@@ -100,6 +144,22 @@
 // takes ~210 ms and used to starve motion sampling).
 #define RHT_CONVERSION_MS               25      // Si7021, measured ~17 ms
 #define LIGHT_CONVERSION_MS             220     // Si1133, measured ~211 ms
+
+// Gyro offset (bias) handling. The ICM-20648 has no magnetometer, so nothing
+// corrects yaw: any gyro offset integrates into endless "rotation". The
+// firmware removes the offset, learned two ways:
+//  - the Calibrate command averages the gyro for GYRO_CALIBRATION_MS while
+//    the board is still and stores the result in flash;
+//  - whenever the board lies still for a GYRO_STILL_WINDOW_MS window (gyro and
+//    accelerometer barely fluctuate), the offset is nudged toward that
+//    window's average, so it keeps up with temperature changes.
+#define GYRO_CALIBRATION_MS             1000
+#define GYRO_STILL_WINDOW_MS            1000
+#define GYRO_STILL_MAX_STDDEV_DPS       0.5f    // noise of a still ICM-20648 is ~0.1 °/s
+#define ACCEL_STILL_MAX_STDDEV_G        0.02f
+#define GYRO_BIAS_LEARN_WEIGHT          0.5f    // how far each still window moves the offset
+// Below this, yaw rate counts as zero: hides the last bit of drift at rest.
+#define YAW_DEADBAND_DPS                0.3f
 
 // Settling time after switching on a sensor's power pin.
 #define IMU_POWER_UP_MS                 50
@@ -120,5 +180,8 @@
 
 #define NVM3_KEY_CONFIG                 0x01001
 #define NVM3_KEY_NAME                   0x01002
+#define NVM3_KEY_GYRO_BIAS              0x01003
+#define NVM3_KEY_DISPLAY_PAGES          0x01004
+#define NVM3_KEY_DISPLAY_PAGE_MS        0x01005
 
 #endif // APP_CONFIG_H

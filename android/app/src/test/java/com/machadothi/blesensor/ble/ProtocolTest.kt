@@ -72,6 +72,20 @@ class ProtocolTest {
     }
 
     @Test
+    fun displayMatchesThePythonClient() {
+        // Display(True, [temperature, humidity, orientation, button], 3.5).encode() in Python
+        val bytes = hex("010303ac0d")
+        val display = DisplayState.decode(bytes)
+        assertEquals(true, display.present)
+        assertEquals(
+            setOf(DisplayPage.TEMPERATURE, DisplayPage.HUMIDITY, DisplayPage.ORIENTATION, DisplayPage.BUTTON),
+            display.pages,
+        )
+        assertEquals(3500, display.pageMs)
+        assertArrayEquals(bytes, display.encode())
+    }
+
+    @Test
     fun infoDecodesBoardAndSensors() {
         val info = BoardInfo.decode(byteArrayOf(1, 0x0A, 0x2F, 0))
         assertEquals("BRD4184A", info.board)
