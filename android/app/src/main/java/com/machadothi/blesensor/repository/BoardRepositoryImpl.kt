@@ -8,6 +8,7 @@ import com.machadothi.blesensor.ble.BoardConnection
 import com.machadothi.blesensor.ble.BoardInfo
 import com.machadothi.blesensor.ble.BoardTime
 import com.machadothi.blesensor.ble.WeatherInfo
+import com.machadothi.blesensor.ble.UpdateStatus
 import com.machadothi.blesensor.ble.WifiStatus
 import com.machadothi.blesensor.ble.CalibrationStatus
 import com.machadothi.blesensor.ble.ButtonState
@@ -47,6 +48,10 @@ class BoardRepositoryImpl @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var connection: BoardConnection? = null
     private var sessionJobs: List<Job> = emptyList()
+    private var lastBoard: Pair<String, String>? = null   // address, name
+    /** Set before a command that restarts the board: what to say while it's away. */
+    @Volatile private var expectedRestart: String? = null
+    private var reconnectJob: Job? = null
 
     override val status = MutableStateFlow<ConnectionStatus>(ConnectionStatus.Idle)
     override val info = MutableStateFlow<BoardInfo?>(null)
@@ -63,6 +68,7 @@ class BoardRepositoryImpl @Inject constructor(
     override val boardTime = MutableStateFlow<BoardTime?>(null)
     override val wifi = MutableStateFlow<WifiStatus?>(null)
     override val weather = MutableStateFlow<WeatherInfo?>(null)
+    override val update = MutableStateFlow<UpdateStatus?>(null)
     override val hasLed = MutableStateFlow(false)
     override val hasConfig = MutableStateFlow(false)
     override val rssi = MutableStateFlow<Int?>(null)
@@ -74,7 +80,14 @@ class BoardRepositoryImpl @Inject constructor(
     private val historyBuffers = HistoryBuffers()
 
     override suspend fun connect(address: String, name: String) {
-        disconnect()
+        reconnectJob?.cancel()
+        open(address, name)
+    }
+
+    private suspend fun open(address: String, name: String) {
+        close()
+        lastBoard = address to name
+        expectedRestart = null
         status.value = ConnectionStatus.Connecting(name)
         val device = context.getSystemService(BluetoothManager::class.java).adapter.getRemoteDevice(address)
         val newConnection = BoardConnection(context)
@@ -93,6 +106,11 @@ class BoardRepositoryImpl @Inject constructor(
     }
 
     override suspend fun disconnect() {
+        reconnectJob?.cancel()
+        close()
+    }
+
+    private suspend fun close() {
         sessionJobs.forEach { it.cancel() }
         sessionJobs = emptyList()
         connection?.let { conn ->
@@ -123,6 +141,7 @@ class BoardRepositoryImpl @Inject constructor(
         boardTime.value = null
         wifi.value = null
         weather.value = null
+        update.value = null
         hasLed.value = false
         hasConfig.value = false
         rssi.value = null
@@ -144,10 +163,15 @@ class BoardRepositoryImpl @Inject constructor(
         if (conn.has(Protocol.TIME)) {
             // Give the board the phone's time and zone on every connect: it then knows
             // the time even without Wi-Fi, and summer time follows the phone's rules.
-            runCatching { conn.write(Protocol.TIME, BoardTime.encodeFromPhone(System.currentTimeMillis(), java.util.TimeZone.getDefault())) }
+            // Not over a time the user set by hand.
+            val before = runCatching { BoardTime.decode(conn.read(Protocol.TIME)) }.getOrNull()
+            if (before?.unixUtc == null || !before.setByHand) {
+                runCatching { conn.write(Protocol.TIME, BoardTime.encodeFromPhone(System.currentTimeMillis(), java.util.TimeZone.getDefault())) }
+            }
             boardTime.value = runCatching { BoardTime.decode(conn.read(Protocol.TIME)) }.getOrNull()
         }
         weather.value = if (conn.has(Protocol.WEATHER)) runCatching { WeatherInfo.decode(conn.read(Protocol.WEATHER)) }.getOrNull() else null
+        update.value = if (conn.has(Protocol.UPDATE)) runCatching { UpdateStatus.decode(conn.read(Protocol.UPDATE)) }.getOrNull() else null
         wifi.value = if (conn.has(Protocol.WIFI)) runCatching { WifiStatus.decode(conn.read(Protocol.WIFI)) }.getOrNull() else null
         system.value = if (conn.has(Protocol.SYSTEM)) runCatching { SystemInfo.decode(conn.read(Protocol.SYSTEM)) }.getOrNull() else null
         // The first Env notification can take a few seconds; read one now.
@@ -175,6 +199,11 @@ class BoardRepositoryImpl @Inject constructor(
             scope.launch {
                 conn.buttonNotifications.collect { bytes ->
                     runCatching { ButtonState.decode(bytes) }.onSuccess { button.value = it }
+                }
+            },
+            scope.launch {
+                conn.updateNotifications.collect { bytes ->
+                    runCatching { UpdateStatus.decode(bytes) }.onSuccess { update.value = it }
                 }
             },
             scope.launch {
@@ -285,6 +314,43 @@ class BoardRepositoryImpl @Inject constructor(
         weather.value = runCatching { WeatherInfo.decode(conn.read(Protocol.WEATHER)) }.getOrNull() ?: weather.value
     }
 
+    override suspend fun setBoardTime(unixMs: Long?) {
+        val conn = requireConnection()
+        val zone = java.util.TimeZone.getDefault()
+        conn.write(Protocol.TIME, if (unixMs == null) BoardTime.encodeFromPhone(System.currentTimeMillis(), zone) else BoardTime.encodeManual(unixMs, zone))
+        boardTime.value = runCatching { BoardTime.decode(conn.read(Protocol.TIME)) }.getOrNull() ?: boardTime.value
+    }
+
+    override suspend fun controlUpdate(command: ByteArray) {
+        val conn = requireConnection()
+        expectedRestart = when (command[0].toInt()) {
+            1 -> "The board restarts to check for updates. Reconnecting in a moment…"
+            2 -> "The board is installing the update. Reconnecting when it's back (about a minute)…"
+            else -> null
+        }
+        try {
+            conn.write(Protocol.UPDATE, command)
+        } catch (e: Exception) {
+            expectedRestart = null
+            throw e
+        }
+    }
+
+    /** After a restart we asked for: try to reconnect for a while, quietly. */
+    private fun reconnectAfterRestart() {
+        val (address, name) = lastBoard ?: return
+        reconnectJob = scope.launch {
+            delay(12_000)                     // the board restarts, then checks or downloads
+            repeat(8) {
+                open(address, name)
+                if (status.value is ConnectionStatus.Connected) return@launch
+                status.value = ConnectionStatus.Lost("The board isn't back yet. Still trying…")
+                delay(8_000)
+            }
+            status.value = ConnectionStatus.Lost("The board didn't come back. Is it powered?")
+        }
+    }
+
     override suspend fun send(command: Command) {
         requireConnection().write(Protocol.COMMAND, byteArrayOf(command.code.toByte()))
         if (command == Command.FACTORY_RESET) {
@@ -302,6 +368,11 @@ class BoardRepositoryImpl @Inject constructor(
             connection?.close()
             connection = null
             clearState()
+            expectedRestart?.let { note ->
+                status.value = ConnectionStatus.Lost(note)
+                reconnectAfterRestart()
+                return
+            }
             status.value = ConnectionStatus.Lost(
                 when (reason) {
                     ConnectionObserver.REASON_LINK_LOSS -> "The board went out of range"

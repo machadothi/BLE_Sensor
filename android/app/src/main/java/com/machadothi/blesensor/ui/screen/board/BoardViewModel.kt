@@ -7,6 +7,7 @@ import androidx.navigation.toRoute
 import com.machadothi.blesensor.ble.BoardConfig
 import com.machadothi.blesensor.ble.Command
 import com.machadothi.blesensor.ble.WeatherInfo
+import com.machadothi.blesensor.ble.UpdateStatus
 import com.machadothi.blesensor.ble.DisplayPage
 import com.machadothi.blesensor.ble.DisplayState
 import com.machadothi.blesensor.ble.LedState
@@ -44,6 +45,7 @@ class BoardViewModel @Inject constructor(
     val boardTime = repository.boardTime
     val wifi = repository.wifi
     val weather = repository.weather
+    val update = repository.update
     val hasLed = repository.hasLed
     val hasConfig = repository.hasConfig
     val rssi = repository.rssi
@@ -90,6 +92,19 @@ class BoardViewModel @Inject constructor(
     fun setWeatherPlace(name: String) = run("Looking up $name…", quiet = true) { repository.controlWeather(WeatherInfo.setPlace(name)) }
     fun locateWeather() = run("Finding the board's location…", quiet = true) { repository.controlWeather(WeatherInfo.locateAutomatically()) }
     fun setWeatherEnabled(on: Boolean) = run("Saved", quiet = true) { repository.controlWeather(WeatherInfo.enabled(on)) }
+
+    /** unixMs: a time picked by hand; null: the phone's time. */
+    fun setBoardTime(unixMs: Long?) =
+        run(if (unixMs == null) "Board clock set from the phone" else "Board clock set") { repository.setBoardTime(unixMs) }
+
+    fun checkForUpdate() = run("", quiet = true) { repository.controlUpdate(UpdateStatus.check()) }
+    fun installUpdate() = run("", quiet = true) { repository.controlUpdate(UpdateStatus.install()) }
+    fun postponeUpdate() = run("You'll be asked again after the board's next check", quiet = false) {
+        repository.controlUpdate(UpdateStatus.dismiss())
+    }
+    fun setAutoUpdate(on: Boolean) = run(if (on) "Updates install automatically" else "You'll be asked before updates") {
+        repository.controlUpdate(UpdateStatus.auto(on))
+    }
 
     fun setAutoCalibration(auto: Boolean) = run("Saved", quiet = true) { repository.controlCalibration(auto, 0) }
 

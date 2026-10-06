@@ -30,6 +30,7 @@ object Protocol {
     val TIME: UUID = uuid(0x0D)      // optional: the board's clock (ESP32 Air) only
     val WIFI: UUID = uuid(0x0E)      // optional: Wi-Fi network and scan (ESP32 Air) only
     val WEATHER: UUID = uuid(0x0F)   // optional: Open-Meteo weather (ESP32 Air) only
+    val UPDATE: UUID = uuid(0x10)    // optional: over-the-air firmware updates (ESP32 Air) only
     const val OFFSET_MAX_C = 10f
 
     /** Advertised manufacturer data: company id, then board id and protocol version. */
@@ -560,6 +561,8 @@ data class BoardTime(
     /** Offset in effect now (summer time included). */
     val currentOffsetMin: Int,
 ) {
+    val setByHand: Boolean get() = source == "set by hand"
+
     companion object {
         const val DST_NONE = 0
         const val DST_EU = 1
@@ -573,10 +576,20 @@ data class BoardTime(
             val source = when (b.u8()) {
                 1 -> "internet"
                 2 -> "phone"
+                3 -> "set by hand"
                 else -> "unknown"
             }
             return BoardTime(unix.takeIf { it != 0L }, offset, dst, source, b.i16())
         }
+
+        const val SOURCE_MANUAL = 3
+
+        /**
+         * A time picked by hand (for a board without internet), in the phone's zone.
+         * The 8th byte tells the board it was set by hand.
+         */
+        fun encodeManual(unixMs: Long, zone: java.util.TimeZone): ByteArray =
+            encodeFromPhone(unixMs, zone) + byteArrayOf(SOURCE_MANUAL.toByte())
 
         /** The phone's time and zone, as the board wants them. */
         fun encodeFromPhone(nowMs: Long, zone: java.util.TimeZone): ByteArray {
@@ -720,5 +733,50 @@ data class WeatherInfo(
         fun locateAutomatically() = setPlace("")
         fun enabled(on: Boolean) = byteArrayOf(if (on) 2 else 3)
         fun refresh() = byteArrayOf(4)
+    }
+}
+
+/** Over-the-air firmware updates (ESP32 Air): the board checks GitHub releases. */
+data class UpdateStatus(
+    val state: State,
+    val currentVersion: String,
+    /** A newer release the board found, null if none. */
+    val availableVersion: String?,
+    val notes: String?,
+    val error: String?,
+    /** Install updates without asking. */
+    val auto: Boolean,
+) {
+    enum class State(val label: String) {
+        IDLE("Idle"),
+        CHECKING("Checking for updates…"),
+        AVAILABLE("Update available"),
+        DOWNLOADING("Installing…"),
+        RESTARTING("Restarting"),
+        FAILED("Failed"),
+        UP_TO_DATE("Up to date"),
+    }
+
+    companion object {
+        fun decode(bytes: ByteArray): UpdateStatus {
+            val b = le(bytes)
+            val state = State.entries.getOrElse(b.u8()) { State.IDLE }
+            b.u8()  // progress: unused, the board downloads with the link down
+            fun text() = ByteArray(b.u8()).also { b.get(it) }.decodeToString()
+            val current = text()
+            val available = text()
+            val notes = text()
+            val error = text()
+            val auto = b.hasRemaining() && b.u8() != 0
+            return UpdateStatus(state, current, available.ifEmpty { null }, notes.ifEmpty { null }, error.ifEmpty { null }, auto)
+        }
+
+        /** Check now. The board restarts to do it (~30 s). */
+        fun check() = byteArrayOf(1)
+        /** Install the available update (the user said yes). The board restarts (~1 min). */
+        fun install() = byteArrayOf(2)
+        /** "Later": the board stops offering it until its next check. */
+        fun dismiss() = byteArrayOf(3)
+        fun auto(on: Boolean) = byteArrayOf(if (on) 4 else 5)
     }
 }

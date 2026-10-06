@@ -33,6 +33,7 @@ class BoardConnection(context: Context) : BleManager(context) {
     private val systemFlow = notifications()
     private val calibrationFlow = notifications()
     private val wifiFlow = notifications()
+    private val updateFlow = notifications()
 
     val envNotifications: SharedFlow<ByteArray> = envFlow
     val motionNotifications: SharedFlow<ByteArray> = motionFlow
@@ -41,6 +42,7 @@ class BoardConnection(context: Context) : BleManager(context) {
     val systemNotifications: SharedFlow<ByteArray> = systemFlow
     val calibrationNotifications: SharedFlow<ByteArray> = calibrationFlow
     val wifiNotifications: SharedFlow<ByteArray> = wifiFlow
+    val updateNotifications: SharedFlow<ByteArray> = updateFlow
 
     override fun isRequiredServiceSupported(gatt: BluetoothGatt): Boolean {
         val service = gatt.getService(Protocol.SERVICE) ?: return false
@@ -49,7 +51,7 @@ class BoardConnection(context: Context) : BleManager(context) {
             characteristics[uuid] = service.getCharacteristic(uuid) ?: return false
         }
         // Thunderboard only (motion, button, LED, config), OLED support, air quality (ESP32 Air).
-        listOf(Protocol.MOTION, Protocol.BUTTON, Protocol.LED, Protocol.CONFIG, Protocol.DISPLAY, Protocol.AIR, Protocol.SYSTEM, Protocol.CALIBRATION, Protocol.TIME, Protocol.WIFI, Protocol.WEATHER).forEach { uuid ->
+        listOf(Protocol.MOTION, Protocol.BUTTON, Protocol.LED, Protocol.CONFIG, Protocol.DISPLAY, Protocol.AIR, Protocol.SYSTEM, Protocol.CALIBRATION, Protocol.TIME, Protocol.WIFI, Protocol.WEATHER, Protocol.UPDATE).forEach { uuid ->
             service.getCharacteristic(uuid)?.let { characteristics[uuid] = it }
         }
         return true
@@ -66,6 +68,7 @@ class BoardConnection(context: Context) : BleManager(context) {
         subscribe(Protocol.SYSTEM, systemFlow)
         subscribe(Protocol.CALIBRATION, calibrationFlow)
         subscribe(Protocol.WIFI, wifiFlow)
+        subscribe(Protocol.UPDATE, updateFlow)
     }
 
     private fun subscribe(uuid: UUID, flow: MutableSharedFlow<ByteArray>) {

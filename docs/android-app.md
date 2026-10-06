@@ -118,13 +118,31 @@ adapts:
   temperature/humidity, the Thunderboard included (computed in the app).
 - **Charts:** eCO2 and TVOC are added.
 - **No Motion tab.** **Control** has only identify, reboot and factory reset.
-- **Settings:** name; **Wi-Fi, time & MQTT** (the board's network with a scan
-  to choose another, its clock, MQTT on/off; the app sends the phone's time and
-  zone on every connect); **Weather** (current conditions, place by name or
-  found automatically, on/off); display pages (and "Upside down", clock page); and
-  **Calibration**:
-  the temperature offset slider, "Measure now" (the board measures its own
-  self-heating, with live progress), and a daily automatic measurement.
+- **Settings:**
+  - **Name.**
+  - **Wi-Fi, time & MQTT:**
+    - the board's network, with a scan to choose another;
+    - its clock: the app sends the phone's time and zone on every connect;
+      **Set clock** sets it by hand for a board without internet, and a time
+      set by hand isn't overwritten on the next connect;
+    - MQTT on/off.
+  - **Weather:** current conditions; the place by name or found automatically;
+    on/off.
+  - **Display pages,** with "Upside down" and the clock page.
+  - **Calibration:**
+    - the temperature offset slider;
+    - "Measure now": the board measures its own self-heating, with live
+      progress;
+    - a daily automatic measurement.
+  - **Firmware:**
+    - the version, and "Check now";
+    - when an update is available, its release notes with Install / Later;
+    - "Install automatically".
+- **Update prompt.** When the board has found an update, the app asks once per
+  version: *Update to 1.1.0?* with the notes.
+  - Checking and installing restart the board. The app shows why the link
+    dropped and reconnects by itself for about a minute and a half.
+  - If the board isn't back by then, there's a Reconnect button.
 
 `BoardConnection` requires only Env, Info, Command and Name; Motion, Button,
 LED, Config, Display and Air are optional. The repository exposes `air`,

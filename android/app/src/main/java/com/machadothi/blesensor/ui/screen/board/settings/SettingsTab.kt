@@ -93,6 +93,7 @@ fun SettingsTab(viewModel: BoardViewModel) {
                     onConnect = viewModel::connectWifi,
                     onForget = viewModel::forgetWifi,
                     onMqtt = viewModel::setMqtt,
+                    onSetTime = viewModel::setBoardTime,
                 )
             }
             val weather by viewModel.weather.collectAsStateWithLifecycle()
@@ -117,6 +118,16 @@ fun SettingsTab(viewModel: BoardViewModel) {
             }
             display?.let { state ->
                 DisplayCard(state, info, onPagesChanged = viewModel::setDisplayPages, onPageMsChanged = viewModel::setDisplayPageMs, onRotatedChanged = viewModel::setDisplayRotated)
+            }
+            val update by viewModel.update.collectAsStateWithLifecycle()
+            update?.let {
+                UpdateCard(
+                    it,
+                    onCheck = viewModel::checkForUpdate,
+                    onInstall = viewModel::installUpdate,
+                    onLater = viewModel::postponeUpdate,
+                    onAuto = viewModel::setAutoUpdate,
+                )
             }
         }
         return
@@ -395,7 +406,8 @@ private fun formatAge(seconds: Long): String = when {
 /**
  * Wi-Fi, clock and MQTT of boards that have them (ESP32 Air): which network, a
  * scan to pick another one, the board's time (the app sets it from the phone on
- * every connect; with Wi-Fi it also comes from the internet), and MQTT on/off.
+ * every connect; with Wi-Fi it also comes from the internet; or set by hand for a
+ * board without internet), and MQTT on/off.
  */
 @Composable
 private fun WifiCard(
@@ -405,8 +417,10 @@ private fun WifiCard(
     onConnect: (String, String) -> Unit,
     onForget: () -> Unit,
     onMqtt: (Boolean) -> Unit,
+    onSetTime: (Long?) -> Unit,
 ) {
     var picking by rememberSaveable { mutableStateOf(false) }
+    var settingClock by rememberSaveable { mutableStateOf(false) }
     var chosen by rememberSaveable { mutableStateOf<String?>(null) }
     GlowCard(Modifier.fillMaxWidth(), accent = Sky) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -420,19 +434,24 @@ private fun WifiCard(
             Text(line, style = MaterialTheme.typography.bodyLarge)
             if (wifi.state == WifiStatus.State.CONNECTED) {
                 Text(
-                    if (wifi.online) "Online: clock and weather available" else "No internet: clock and weather pages are skipped",
+                    if (wifi.online) "Online: clock and weather available" else "No internet: the weather page is skipped",
                     style = MaterialTheme.typography.labelMedium,
                     color = if (wifi.online) MaterialTheme.colorScheme.onSurfaceVariant else Amber,
                 )
             }
-            if (time?.unixUtc != null) {
-                val local = java.time.Instant.ofEpochSecond(time.unixUtc)
-                    .atOffset(java.time.ZoneOffset.ofTotalSeconds(time.currentOffsetMin * 60))
-                Text(
-                    "Board time %02d:%02d · from the %s".format(local.hour, local.minute, time.source),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            if (time != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (time.unixUtc == null) "Board time not set"
+                        else java.time.Instant.ofEpochSecond(time.unixUtc)
+                            .atOffset(java.time.ZoneOffset.ofTotalSeconds(time.currentOffsetMin * 60))
+                            .let { "Board time %02d:%02d · %s".format(it.hour, it.minute, if (time.setByHand) "set by hand" else "from the ${time.source}") },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { settingClock = true }) { Text("Set clock") }
+                }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 FilledTonalButton(onClick = { picking = true; onScan() }) { Text("Choose network") }
@@ -457,6 +476,13 @@ private fun WifiCard(
         }
     }
 
+    if (settingClock) {
+        SetClockDialog(
+            onSet = { onSetTime(it); settingClock = false },
+            onPhoneTime = { onSetTime(null); settingClock = false },
+            onDismiss = { settingClock = false },
+        )
+    }
     if (picking) {
         AlertDialog(
             onDismissRequest = { picking = false },

@@ -60,6 +60,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.machadothi.blesensor.ble.Sensor
+import com.machadothi.blesensor.ble.UpdateStatus
+import com.machadothi.blesensor.ui.screen.board.settings.UpdateDialog
 import com.machadothi.blesensor.repository.ConnectionStatus
 import com.machadothi.blesensor.ui.components.SignalBars
 import com.machadothi.blesensor.ui.screen.board.charts.ChartsTab
@@ -89,6 +91,18 @@ fun BoardScreen(onBack: () -> Unit, viewModel: BoardViewModel = hiltViewModel())
     val snackbar = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) { viewModel.messages.collect { snackbar.showSnackbar(it) } }
+
+    // A firmware update the board found: ask once per version (Later = ask again after its next check).
+    val update by viewModel.update.collectAsStateWithLifecycle()
+    var answered by rememberSaveable { mutableStateOf<String?>(null) }
+    update?.takeIf { it.state == UpdateStatus.State.AVAILABLE && it.availableVersion != answered && status is ConnectionStatus.Connected }?.let { u ->
+        UpdateDialog(
+            u,
+            onInstall = { answered = u.availableVersion; viewModel.installUpdate() },
+            onLater = { answered = u.availableVersion; viewModel.postponeUpdate() },
+            onDismiss = { answered = u.availableVersion },
+        )
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },

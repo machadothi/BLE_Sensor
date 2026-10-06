@@ -180,4 +180,26 @@ class ProtocolTest {
         assertEquals(true, w.placeIsAutomatic && w.online && w.fresh)
         assertEquals(null, w.error)
     }
+
+    @Test
+    fun updateStatus() {
+        // ble.py write_update: state 2 (available), progress, current, available, notes, error, auto
+        val u = UpdateStatus.decode(hex("020005312e302e3005312e302e310546697865730001"))
+        assertEquals(UpdateStatus.State.AVAILABLE, u.state)
+        assertEquals("1.0.0", u.currentVersion)
+        assertEquals("1.0.1", u.availableVersion)
+        assertEquals("Fixes", u.notes)
+        assertEquals(null, u.error)
+        assertEquals(true, u.auto)
+        assertArrayEquals(byteArrayOf(2), UpdateStatus.install())
+        assertArrayEquals(byteArrayOf(5), UpdateStatus.auto(false))
+    }
+
+    @Test
+    fun manualTime() {
+        // 7 bytes like the phone's time, then source 3 (set by hand)
+        val bytes = BoardTime.encodeManual(1_759_759_200_000, java.util.TimeZone.getTimeZone("Europe/Stockholm"))
+        assertArrayEquals(hex("60cbe3683c000103"), bytes)
+        assertEquals(true, BoardTime.decode(hex("60cbe3683c000103" + "3c000000")).setByHand)
+    }
 }
