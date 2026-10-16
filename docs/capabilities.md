@@ -178,14 +178,15 @@ Valid bits: 0 temperature, 1 humidity, 2 lux, 3 UV, 4 hall, 5 sound,
 
 <a id="sensor-bits"></a>Sensor bits (used by both Config and Info): 0 RHT,
 1 light, 2 hall, 3 IMU, 4 sound, 5 supply voltage (6 air quality: ESP32 Air
-board only, in Info). The UART line
+board only; 7 soil moisture: ESP32 Soil board only; both in Info). The UART line
 `Sensors available: 0x2F` means bits 0, 1, 2, 3, 5.
 
 ### Info (4 bytes)
 
 `u8 protocol_version` (1), `u8 board` (`0x0A` = BRD4184A, `0x0B` = BRD4184B,
-`0x0C` = ESP32 Air, see [below](#other-boards-esp32-air)), `u8 available sensor
-bits` (bit 6 = air quality, ESP32 Air only), `u8 reserved`.
+`0x0C` = ESP32 Air, see [below](#other-boards-esp32-air), `0x0D` = ESP32 Soil,
+see [below](#other-boards-esp32-soil)), `u8 available sensor bits` (bit 6 = air
+quality, ESP32 Air only; bit 7 = soil moisture, ESP32 Soil only), `u8 reserved`.
 
 ### Display (5 bytes)
 
@@ -288,3 +289,49 @@ previous one back.
 The definitions are in `firmware/src/ble/ble_protocol.h` (`BOARD_ID_ESP32_AIR`,
 `SENSOR_BIT_AIR`, `DISPLAY_PAGE_BIT_AIR_QUALITY`…, `ble_sensor_air_t`); the
 ESP32 side is documented in that project's `docs/bluetooth.md`.
+
+## Other boards: ESP32 Soil
+
+The ESP32 soil moisture board (DIYMORE ESP32 + capacitive probe + DHT11,
+separate project, `~/git/soil_moisture_sensor`) speaks this protocol too.
+Board id `0x0D`, sensors `0x81` (temperature/humidity + soil moisture). It runs
+on an 18650 battery and deep-sleeps between measurements, so it advertises only
+while awake: 2 minutes after power-on or a press of its EN button, and 4 s at
+each measurement. A connected phone keeps it awake.
+
+| Characteristic | ESP32 Soil |
+|---|---|
+| Env (`01`) | yes, every 2 s while connected; only temperature and humidity are valid (DHT11) |
+| Motion, Button, LED, Config, Display (`02`–`05`, `09`) | **absent** |
+| Info, Command, Name (`06`–`08`) | yes; commands: factory reset (also forgets paired phones, restarts), reboot |
+| **System** (`0B`, read, notify, 32 bytes) | as on the ESP32 Air; Wi-Fi fields 0, sensor errors = failed DHT11 reads |
+| **Soil** (`11`, read, write, notify, 20 bytes) | new, see below |
+
+Soil:
+
+| Offset | Type | Field |
+|---|---|---|
+| 0 | u32 | uptime, ms |
+| 4 | u16 | probe output, mV (0 = none) |
+| 6 | u16 | moisture, % × 100 (`0xFFFF` = none) |
+| 8 | u16 | dry end: probe in air, mV (0 %) |
+| 10 | u16 | wet end: probe in water, mV (100 %) |
+| 12 | u16 | deep sleep between measurements, s (0 = never sleeps) |
+| 14 | u16 | battery, mV (0 = not measured) |
+| 16 | u8 | battery, % (`0xFF` = not measured) |
+| 17 | 3 bytes | reserved |
+
+**Write** 1 byte: `1` the probe's current reading becomes the dry end, `2` the
+wet end; 4 bytes: u16 dry, u16 wet; 6 bytes: u16 dry, u16 wet, u16 interval.
+The board keeps dry at least 200 mV above wet, and the interval 0 or
+60–65535 s. Like the ESP32 Air it can't answer with ATT errors: it ignores an
+invalid value and writes the old one back.
+
+**Security** is the ESP32 Air's: readings are public, every write needs an
+authenticated (passkey) link. The board has no display, so its 6-digit code
+is fixed: made on its first start, printed on its USB log, and meant for a
+label on the board.
+
+The definitions are in `firmware/src/ble/ble_protocol.h` (`BOARD_ID_ESP32_SOIL`,
+`SENSOR_BIT_SOIL`, `ble_sensor_soil_t`); the ESP32 side is documented in that
+project's `docs/bluetooth.md`.

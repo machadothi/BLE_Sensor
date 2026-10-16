@@ -118,6 +118,36 @@ class ProtocolTest {
         assertEquals(display.pages, display.pages.filter { it.isAvailableOn(info) }.toSet())
     }
 
+    // Bytes as the ESP32 Soil board sends them (~/git/soil_moisture_sensor/firmware/protocol.py).
+    @Test
+    fun esp32SoilBoard() {
+        val info = BoardInfo.decode(hex("010d8100"))
+        assertEquals(Protocol.BOARD_ESP32_SOIL, info.board)
+        assertEquals(setOf(Sensor.RHT, Sensor.SOIL), info.available)
+        assertEquals(false, info.isThunderboard)
+
+        val soil = SoilReading.decode(hex("88130000fe087b0d0e0b14052c010000ff000000"))
+        assertEquals(5000L, soil.uptimeMs)
+        assertEquals(2302, soil.probeMv)
+        assertNear(34.51f, soil.moisturePct)
+        assertEquals(2830, soil.dryMv)
+        assertEquals(1300, soil.wetMv)
+        assertEquals(300, soil.intervalS)
+        assertEquals(null, soil.batteryV)
+        assertEquals(null, soil.batteryPct)
+
+        val empty = SoilReading.decode(hex("000000000000ffff0e0b140500003c0f48000000"))
+        assertEquals(null, empty.probeMv)
+        assertEquals(null, empty.moisturePct)
+        assertEquals(0, empty.intervalS)
+        assertNear(3.9f, empty.batteryV)
+        assertEquals(72, empty.batteryPct)
+
+        assertArrayEquals(hex("01"), SoilReading.calibrateDry())
+        assertArrayEquals(hex("02"), SoilReading.calibrateWet())
+        assertArrayEquals(hex("540bb0045802"), SoilReading.set(2900, 1200, 600))
+    }
+
     // The ESP32's extended Air (22 bytes) and System (32 bytes) values.
     @Test
     fun esp32Details() {

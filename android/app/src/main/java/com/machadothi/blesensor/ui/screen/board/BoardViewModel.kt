@@ -11,6 +11,7 @@ import com.machadothi.blesensor.ble.UpdateStatus
 import com.machadothi.blesensor.ble.DisplayPage
 import com.machadothi.blesensor.ble.DisplayState
 import com.machadothi.blesensor.ble.LedState
+import com.machadothi.blesensor.ble.SoilReading
 import com.machadothi.blesensor.repository.BoardRepository
 import com.machadothi.blesensor.ui.navigation.NavRoutes
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -46,6 +47,7 @@ class BoardViewModel @Inject constructor(
     val wifi = repository.wifi
     val weather = repository.weather
     val update = repository.update
+    val soil = repository.soil
     val hasLed = repository.hasLed
     val hasConfig = repository.hasConfig
     val rssi = repository.rssi
@@ -116,6 +118,30 @@ class BoardViewModel @Inject constructor(
     fun cancelCalibration() {
         val auto = calibration.value?.auto ?: false
         run("Measurement cancelled") { repository.controlCalibration(auto, 2) }
+    }
+
+    /** The probe is in air now: its reading becomes the dry end of the scale. */
+    fun calibrateSoilDry() = calibrateSoil(SoilReading.calibrateDry(), "Dry end set") { before, after -> after.dryMv != before.dryMv }
+
+    /** The probe is in water now: its reading becomes the wet end. */
+    fun calibrateSoilWet() = calibrateSoil(SoilReading.calibrateWet(), "Wet end set") { before, after -> after.wetMv != before.wetMv }
+
+    /** Deep sleep between measurements, seconds; 0 = never sleep. */
+    fun setSoilInterval(intervalS: Int) {
+        val current = soil.value ?: return
+        run(if (intervalS == 0) "The board stays awake (for USB power)" else "Saved; applies from the board's next sleep") {
+            val after = repository.controlSoil(SoilReading.set(current.dryMv, current.wetMv, intervalS))
+            if (after?.intervalS != intervalS) error("The board rejected that interval")
+        }
+    }
+
+    private fun calibrateSoil(command: ByteArray, success: String, changed: (SoilReading, SoilReading) -> Boolean) {
+        val before = soil.value ?: return
+        run(success) {
+            val after = repository.controlSoil(command) ?: error("Couldn't read the calibration back")
+            // The board keeps the old value when dry wouldn't be well above wet.
+            if (!changed(before, after)) error("Not saved: dry must read at least ${SoilReading.GAP_MIN_MV} mV above wet")
+        }
     }
 
     private fun updateDisplay(change: (DisplayState) -> DisplayState) {

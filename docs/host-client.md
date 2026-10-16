@@ -70,6 +70,11 @@ work with `scan`, `info`, `read` (adds AQI, eCO2, TVOC, ENS160 details and the b
 `name`, `display` (`--pages all` means that board's eight pages; `--rotate on|off` turns its display 180°), `identify`,
 `reboot` and `factory-reset`. They have no LED, config, motion or button.
 
+**ESP32 Soil boards** (see [capabilities.md](capabilities.md#other-boards-esp32-soil))
+work with `scan`, `info`, `read` (adds soil moisture, the probe and its calibration,
+and the board's status), `monitor env`, `name`, `reboot` and `factory-reset`. Writes need
+pairing first: `bluetoothctl`, then `pair <address>` and the board's code.
+
 `ble-sensor config --help` shows each option's allowed range. An out-of-range
 value fails with `BleakGATTProtocolError ... Value Not Allowed`, and the board
 keeps its previous setting.
@@ -112,7 +117,8 @@ API summary (all methods are `async`):
 | `read_config()` / `set_config(sensors=None, **fields)` | `Config(sensor_mask, env_period_ms, motion_period_ms, tx_power_dbm, adv_interval_ms, hall_threshold_mt)`; `set_config` changes only the fields passed |
 | `read_name()` / `set_name(name)` | device name |
 | `read_air()` | `Air(uptime_ms, state, aqi, eco2_ppm, tvoc_ppb, status, firmware, r1_ohms, r4_ohms, compensation_c, compensation_pct)`: ESP32 Air board only |
-| `read_system()` | `System(uptime_s, free_ram, chip_temperature_c, wifi_rssi, wifi, mqtt, bluetooth, ip, cpu_mhz, reset_cause, micropython, sensor_errors, integrity_errors, humid_s)`: ESP32 Air board only |
+| `read_soil()` | `Soil(uptime_ms, probe_mv, moisture_pct, dry_mv, wet_mv, interval_s, battery_v, battery_pct)`: ESP32 Soil board only |
+| `read_system()` | `System(uptime_s, free_ram, chip_temperature_c, wifi_rssi, wifi, mqtt, bluetooth, ip, cpu_mhz, reset_cause, micropython, sensor_errors, integrity_errors, humid_s)`: ESP32 boards only |
 | `read_display()` / `set_display(pages=None, page_time_s=None)` | `Display(present, pages, page_time_s)`: the OLED, which readings it shows (names from `protocol.DISPLAY_PAGES`) and seconds per reading; `set_display` changes only what you pass |
 | `command(name)` | `"calibrate"`, `"factory-reset"`, `"reboot"`, `"identify"`, `"reset-orientation"` |
 | `on_env(cb)` / `on_motion(cb)` / `on_button(cb)` | subscribe; `cb` gets the decoded object, and may be a plain or `async` function |

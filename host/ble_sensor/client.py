@@ -12,8 +12,8 @@ from bleak.backends.scanner import AdvertisementData
 
 from . import discovery
 from .protocol import (
-    AIR_UUID, SYSTEM_UUID, BUTTON_UUID, COMMAND_UUID, COMMANDS, CONFIG_UUID, DISPLAY_UUID, ENV_UUID, INFO_UUID, LED_UUID,
-    MOTION_UUID, NAME_MAX_LEN, NAME_UUID, Air, System, Button, Config, Display, Env, Info, Led, Motion, sensor_mask,
+    AIR_UUID, SOIL_UUID, SYSTEM_UUID, BUTTON_UUID, COMMAND_UUID, COMMANDS, CONFIG_UUID, DISPLAY_UUID, ENV_UUID, INFO_UUID, LED_UUID,
+    MOTION_UUID, NAME_MAX_LEN, NAME_UUID, Air, Soil, System, Button, Config, Display, Env, Info, Led, Motion, sensor_mask,
 )
 
 CONNECT_ATTEMPTS = 2
@@ -110,8 +110,12 @@ class BleSensor:
         """Air quality; ESP32 Air board only."""
         return Air.decode(await self._read(AIR_UUID))
 
+    async def read_soil(self) -> Soil:
+        """Soil moisture and its calibration; ESP32 Soil board only."""
+        return Soil.decode(await self._read(SOIL_UUID))
+
     async def read_system(self) -> System:
-        """The board's own status; ESP32 Air board only."""
+        """The board's own status; ESP32 boards only."""
         return System.decode(await self._read(SYSTEM_UUID))
 
     async def read_display(self) -> Display:
