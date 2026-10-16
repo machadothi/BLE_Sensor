@@ -9,3 +9,6 @@ android/build/
 android/app/build/
 android/local.properties
 android/.kotlin/
+
+# Local project notes and TODOs for Claude Code
+.claude/
