@@ -34,6 +34,7 @@ class BoardConnection(context: Context) : BleManager(context) {
     private val calibrationFlow = notifications()
     private val wifiFlow = notifications()
     private val updateFlow = notifications()
+    private val soilFlow = notifications()
 
     val envNotifications: SharedFlow<ByteArray> = envFlow
     val motionNotifications: SharedFlow<ByteArray> = motionFlow
@@ -43,6 +44,7 @@ class BoardConnection(context: Context) : BleManager(context) {
     val calibrationNotifications: SharedFlow<ByteArray> = calibrationFlow
     val wifiNotifications: SharedFlow<ByteArray> = wifiFlow
     val updateNotifications: SharedFlow<ByteArray> = updateFlow
+    val soilNotifications: SharedFlow<ByteArray> = soilFlow
 
     override fun isRequiredServiceSupported(gatt: BluetoothGatt): Boolean {
         val service = gatt.getService(Protocol.SERVICE) ?: return false
@@ -50,8 +52,8 @@ class BoardConnection(context: Context) : BleManager(context) {
         listOf(Protocol.ENV, Protocol.INFO, Protocol.COMMAND, Protocol.NAME).forEach { uuid ->
             characteristics[uuid] = service.getCharacteristic(uuid) ?: return false
         }
-        // Thunderboard only (motion, button, LED, config), OLED support, air quality (ESP32 Air).
-        listOf(Protocol.MOTION, Protocol.BUTTON, Protocol.LED, Protocol.CONFIG, Protocol.DISPLAY, Protocol.AIR, Protocol.SYSTEM, Protocol.CALIBRATION, Protocol.TIME, Protocol.WIFI, Protocol.WEATHER, Protocol.UPDATE).forEach { uuid ->
+        // Thunderboard only (motion, button, LED, config), OLED support, air quality (ESP32 Air), soil (ESP32 Soil).
+        listOf(Protocol.MOTION, Protocol.BUTTON, Protocol.LED, Protocol.CONFIG, Protocol.DISPLAY, Protocol.AIR, Protocol.SYSTEM, Protocol.CALIBRATION, Protocol.TIME, Protocol.WIFI, Protocol.WEATHER, Protocol.UPDATE, Protocol.SOIL).forEach { uuid ->
             service.getCharacteristic(uuid)?.let { characteristics[uuid] = it }
         }
         return true
@@ -59,10 +61,11 @@ class BoardConnection(context: Context) : BleManager(context) {
 
     // Runs once after service discovery, before the connection counts as ready.
     override fun initialize() {
-        // The ESP32 Air board takes settings only from a paired phone (passkey on
-        // its display): pair right away, so the passkey prompt comes up now and
-        // not on the first write. Thunderboards don't need it.
-        if (characteristics.containsKey(Protocol.WIFI) && bluetoothDevice?.bondState != BluetoothDevice.BOND_BONDED) {
+        // The ESP32 boards (the ones without Config) take settings only from a
+        // paired phone (passkey on the Air board's display, on the Soil board's
+        // label): pair right away, so the passkey prompt comes up now and not on
+        // the first write. Thunderboards don't need it.
+        if (!characteristics.containsKey(Protocol.CONFIG) && bluetoothDevice?.bondState != BluetoothDevice.BOND_BONDED) {
             createBondInsecure()
                 .fail { _, status -> Log.w("BoardConnection", "Pairing failed ($status): settings can't be changed") }
                 .enqueue()
@@ -77,6 +80,7 @@ class BoardConnection(context: Context) : BleManager(context) {
         subscribe(Protocol.CALIBRATION, calibrationFlow)
         subscribe(Protocol.WIFI, wifiFlow)
         subscribe(Protocol.UPDATE, updateFlow)
+        subscribe(Protocol.SOIL, soilFlow)
     }
 
     private fun subscribe(uuid: UUID, flow: MutableSharedFlow<ByteArray>) {

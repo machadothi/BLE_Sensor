@@ -144,7 +144,8 @@ adapts:
     Android asks for it.
   - **After that,** the phone stays paired. A factory reset of the board
     forgets all phones.
-  - **Thunderboards** don't need pairing.
+  - **Thunderboards** don't need pairing. The app pairs with every board
+    that has no Config characteristic (the ESP32 boards).
 - **Update prompt.** When the board has found an update, the app asks once per
   version: *Update to 1.1.0?* with the notes.
   - Checking and installing restart the board. The app shows why the link
@@ -155,3 +156,27 @@ adapts:
 LED, Config, Display and Air are optional. The repository exposes `air`,
 `hasLed` and `hasConfig`, and the UI hides what a board doesn't have.
 
+
+## ESP32 Soil boards
+
+The app also works with the ESP32 soil moisture board (board id `0x0D`, see
+[capabilities.md](capabilities.md#other-boards-esp32-soil)). Its radar lists it
+as "ESP32 Soil". It deep-sleeps on battery, so it shows up only while awake:
+press its **EN** button, then connect within 2 minutes. While the app is
+connected it stays awake.
+- **Live:** a soil moisture card (percentage, a word for it, a dry-to-wet bar
+  and a trend), temperature, humidity, dew point, absolute humidity, then
+  **Soil probe** (probe voltage, the dry and wet calibration, the measuring
+  interval, battery) and **Board** (no Wi-Fi or MQTT rows on this board).
+- **Charts:** soil moisture is added.
+- **No Motion tab.** **Control** has reboot and factory reset.
+- **Settings:**
+  - **Name.**
+  - **Soil calibration:** the probe's reading now, **Set dry** (probe in air)
+    and **Set wet** (probe in water). The board refuses a dry end less than
+    200 mV above the wet end, and the app says so.
+  - **Measure every** (1 min to 18 h of deep sleep), or **Stay awake** for USB
+    power.
+- **Pairing,** as on the ESP32 Air: the app pairs right after connecting, and
+  Android asks for the board's 6-digit code. This board has no display: the
+  code is fixed, printed on its USB log at start-up (put it on a label).

@@ -31,6 +31,7 @@ object Protocol {
     val WIFI: UUID = uuid(0x0E)      // optional: Wi-Fi network and scan (ESP32 Air) only
     val WEATHER: UUID = uuid(0x0F)   // optional: Open-Meteo weather (ESP32 Air) only
     val UPDATE: UUID = uuid(0x10)    // optional: over-the-air firmware updates (ESP32 Air) only
+    val SOIL: UUID = uuid(0x11)      // optional: soil moisture and its calibration (ESP32 Soil) only
     const val OFFSET_MAX_C = 10f
 
     /** Advertised manufacturer data: company id, then board id and protocol version. */
@@ -39,11 +40,13 @@ object Protocol {
     const val NAME_MAX_BYTES = 20
 
     const val BOARD_ESP32_AIR = "ESP32 Air"
+    const val BOARD_ESP32_SOIL = "ESP32 Soil"
 
     fun boardName(id: Int): String = when (id) {
         0x0A -> "BRD4184A"
         0x0B -> "BRD4184B"
         0x0C -> BOARD_ESP32_AIR    // ESP32 + ENS160/AHT21 air monitor (~/git/air_quality_sensor)
+        0x0D -> BOARD_ESP32_SOIL   // ESP32 + capacitive soil probe/DHT11 (~/git/soil_moisture_sensor)
         else -> "Unknown"
     }
 }
@@ -51,7 +54,8 @@ object Protocol {
 /**
  * Sensors, in the bit order of Config.sensor_mask and Info.available_mask.
  * [switchable]: one of the Thunderboard's sensors that Config can turn on and off.
- * Air quality is only reported by the ESP32 Air board (Info), which has no Config.
+ * Air quality and soil moisture are only reported by the ESP32 boards (Info),
+ * which have no Config.
  */
 enum class Sensor(val bit: Int, val label: String, val switchable: Boolean = true) {
     RHT(1 shl 0, "Temperature & humidity"),
@@ -60,7 +64,8 @@ enum class Sensor(val bit: Int, val label: String, val switchable: Boolean = tru
     IMU(1 shl 3, "Motion (IMU)"),
     SOUND(1 shl 4, "Sound"),
     SUPPLY(1 shl 5, "Supply voltage"),
-    AIR(1 shl 6, "Air quality (ENS160)", switchable = false);
+    AIR(1 shl 6, "Air quality (ENS160)", switchable = false),
+    SOIL(1 shl 7, "Soil moisture", switchable = false);
 
     companion object {
         fun fromMask(mask: Int): Set<Sensor> = entries.filter { mask and it.bit != 0 }.toSet()
@@ -310,7 +315,7 @@ data class BoardConfig(
 }
 
 data class BoardInfo(val protocolVersion: Int, val board: String, val available: Set<Sensor>) {
-    /** Thunderboard EFR32BG22 (BRD4184A/B), as opposed to the ESP32 Air board. */
+    /** Thunderboard EFR32BG22 (BRD4184A/B), as opposed to the ESP32 boards. */
     val isThunderboard: Boolean get() = board.startsWith("BRD")
 
     companion object {
@@ -386,6 +391,64 @@ data class AirReading(
                 compensationPct = if (compC == NONE_I16) null else compPct / 100f,
             )
         }
+    }
+}
+
+/**
+ * Soil moisture (ESP32 Soil board): Soil characteristic, 20 bytes. The
+ * capacitive probe's voltage drops as the soil gets wetter; [dryMv] (probe in
+ * air) and [wetMv] (in water) are the two ends of the 0-100 % scale.
+ */
+data class SoilReading(
+    val uptimeMs: Long,
+    val probeMv: Int?,
+    val moisturePct: Float?,
+    val dryMv: Int,
+    val wetMv: Int,
+    /** Deep sleep between measurements; 0 = the board never sleeps. */
+    val intervalS: Int,
+    val batteryV: Float?,
+    val batteryPct: Int?,
+) {
+    companion object {
+        const val SIZE = 20
+        /** The board refuses a calibration with dry less than this far above wet. */
+        const val GAP_MIN_MV = 200
+        val intervalS = 60..65_535
+
+        fun decode(bytes: ByteArray): SoilReading {
+            require(bytes.size >= SIZE) { "Soil needs $SIZE bytes, got ${bytes.size}" }
+            val b = le(bytes)
+            val uptime = b.u32()
+            val probe = b.u16()
+            val moisture = b.u16()
+            val dry = b.u16()
+            val wet = b.u16()
+            val interval = b.u16()
+            val batteryMv = b.u16()
+            val batteryPct = b.u8()
+            return SoilReading(
+                uptimeMs = uptime,
+                probeMv = probe.takeIf { it != 0 },
+                moisturePct = moisture.takeIf { it != 0xFFFF }?.let { it / 100f },
+                dryMv = dry,
+                wetMv = wet,
+                intervalS = interval,
+                batteryV = batteryMv.takeIf { it != 0 }?.let { it / 1000f },
+                batteryPct = batteryPct.takeIf { it != 0xFF },
+            )
+        }
+
+        /** Writes: the probe's current reading becomes the dry end (probe in air). */
+        fun calibrateDry() = byteArrayOf(1)
+
+        /** The probe's current reading becomes the wet end (probe in water). */
+        fun calibrateWet() = byteArrayOf(2)
+
+        /** Both ends and the deep-sleep interval (0 = never sleep). */
+        fun set(dryMv: Int, wetMv: Int, intervalS: Int): ByteArray = le(ByteArray(6)).apply {
+            putShort(dryMv.toShort()); putShort(wetMv.toShort()); putShort(intervalS.toShort())
+        }.array()
     }
 }
 

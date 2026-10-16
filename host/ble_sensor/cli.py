@@ -11,7 +11,7 @@ from typing import Awaitable, Callable, Optional
 
 from .client import BleSensor
 from .protocol import (
-    COMMANDS, DISPLAY_PAGE_TIME_S, DISPLAY_PAGES, ESP32_AIR, LED_MODES, LIMITS, CONFIG_SENSORS, Air, System, Button, Config, Env,
+    COMMANDS, DISPLAY_PAGE_TIME_S, DISPLAY_PAGES, ESP32_BOARDS, LED_MODES, LIMITS, CONFIG_SENSORS, Air, Soil, System, Button, Config, Env,
     Motion, board_pages,
 )
 
@@ -74,6 +74,15 @@ def print_air(air: Air) -> None:
         print(f"ens160: firmware {air.firmware}  status 0x{air.status:02x}  R1={r1}  R4={r4}  compensation {comp}")
 
 
+def print_soil(soil: Soil) -> None:
+    moisture = f"{soil.moisture_pct:.1f} %" if soil.moisture_pct is not None else "n/a"
+    probe = f"{soil.probe_mv} mV" if soil.probe_mv else "n/a"
+    interval = f"every {soil.interval_s} s" if soil.interval_s else "never sleeps"
+    battery = f"{soil.battery_v:.2f} V ({soil.battery_pct} %)" if soil.battery_v else "not measured"
+    print(f"soil: moisture {moisture}  probe {probe} (dry {soil.dry_mv} mV, wet {soil.wet_mv} mV)  "
+          f"measures {interval}  battery {battery}")
+
+
 def print_system(system: System) -> None:
     chip = f"{system.chip_temperature_c:.1f}°C" if system.chip_temperature_c is not None else "n/a"
     wifi = f"{system.wifi_rssi} dBm {system.ip}" if system.wifi else "offline"
@@ -89,7 +98,7 @@ async def cmd_info(board: BleSensor, args: argparse.Namespace) -> None:
     print(f"board:     {info.board}")
     print(f"protocol:  v{info.protocol_version}")
     print(f"sensors:   {', '.join(info.available)}")
-    if info.board == ESP32_AIR:   # no config or LED on this board
+    if info.board in ESP32_BOARDS:   # no config or LED on these boards
         return
     led = await board.read_led()
     print("config:")
@@ -102,13 +111,16 @@ async def cmd_read(board: BleSensor, args: argparse.Namespace) -> None:
     print_env(await board.read_env())
     if "air" in info.available:
         print_air(await board.read_air())
+    if "soil" in info.available:
+        print_soil(await board.read_soil())
+    if info.board in ESP32_BOARDS:
         print_system(await board.read_system())
     if "imu" in info.available:
         try:
             print_motion(await board.read_motion())
         except struct.error:   # empty value: IMU off or no sample yet
             print("motion: n/a")
-    if info.board != ESP32_AIR:
+    if info.board not in ESP32_BOARDS:
         print_button(await board.read_button())
 
 
