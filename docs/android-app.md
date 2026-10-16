@@ -138,6 +138,13 @@ adapts:
     - the version, and "Check now";
     - when an update is available, its release notes with Install / Later;
     - "Install automatically".
+- **Pairing.** This board accepts settings only from a paired phone, so the
+  app pairs right after connecting.
+  - **The first time,** the board shows a 6-digit code on its display and
+    Android asks for it.
+  - **After that,** the phone stays paired. A factory reset of the board
+    forgets all phones.
+  - **Thunderboards** don't need pairing.
 - **Update prompt.** When the board has found an update, the app asks once per
   version: *Update to 1.1.0?* with the notes.
   - Checking and installing restart the board. The app shows why the link
