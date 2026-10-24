@@ -3,6 +3,8 @@ package com.machadothi.blesensor.ui.screen.scan
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.machadothi.blesensor.ble.BoardScanner
+import com.machadothi.blesensor.ble.KnownBoard
+import com.machadothi.blesensor.ble.KnownBoards
 import com.machadothi.blesensor.ble.ScanFailedException
 import com.machadothi.blesensor.ble.ScannedBoard
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -25,13 +27,22 @@ data class ScanUiState(
 private const val SCAN_DURATION_MS = 20_000L  // Android throttles apps that scan nonstop
 
 @HiltViewModel
-class ScanViewModel @Inject constructor(private val scanner: BoardScanner) : ViewModel() {
+class ScanViewModel @Inject constructor(
+    private val scanner: BoardScanner,
+    private val known: KnownBoards,
+) : ViewModel() {
 
     private val _state = MutableStateFlow(ScanUiState())
     val state: StateFlow<ScanUiState> = _state.asStateFlow()
     private var scanJob: Job? = null
 
+    /** Boards this phone is bonded with: connectable without scanning. */
+    val knownBoards: StateFlow<List<KnownBoard>> = known.boards
+
+    fun forget(address: String) = known.forget(address)
+
     fun startScan() {
+        known.refresh()   // a bond removed in Android's settings drops out
         if (!scanner.isBluetoothOn) {
             _state.value = ScanUiState(bluetoothOff = true)
             return

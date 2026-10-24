@@ -138,13 +138,23 @@ adapts:
     - the version, and "Check now";
     - when an update is available, its release notes with Install / Later;
     - "Install automatically".
-- **Pairing.** This board accepts settings only from a paired phone, so the
-  app pairs right after connecting.
-  - **The first time,** the board shows a 6-digit code on its display and
-    Android asks for it.
-  - **After that,** the phone stays paired. A factory reset of the board
-    forgets all phones.
-  - **Thunderboards** don't need pairing.
+- **Pairing and "Your boards".** This board talks only to phones it's bonded
+  with, and takes new ones only while its **pairing window** is open.
+  - **Opening the window:** press the board's reset button twice, a second
+    apart (2 minutes); or on a new board, the first 10 minutes after
+    start-up; or **Control → Add a phone** on an already paired phone.
+  - **In the scan:**
+    - a board with the window open shows **Ready to pair**. Tap it, and
+      Android asks to pair, with no code;
+    - one with the window closed shows "Press its reset button twice to
+      pair", and tapping it explains how.
+  - **Your boards:** once paired, the board is listed at the top of the scan
+    screen. Tap it to connect, with no scan and no button press. Long-press
+    it to **forget** it, which also removes Android's bond.
+  - **Thunderboards** don't pair and aren't listed there.
+- **Self-heating measurement.** "Measure now" switches the board off for the
+  cooling time (20 min). The app says so, and reconnects when the board is
+  back.
 - **Update prompt.** When the board has found an update, the app asks once per
   version: *Update to 1.1.0?* with the notes.
   - Checking and installing restart the board. The app shows why the link

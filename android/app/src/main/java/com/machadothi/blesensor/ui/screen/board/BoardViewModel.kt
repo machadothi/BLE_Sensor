@@ -110,7 +110,7 @@ class BoardViewModel @Inject constructor(
 
     fun startCalibration() {
         val auto = calibration.value?.auto ?: false
-        run("Measuring: the air sensor sleeps while the board cools down") { repository.controlCalibration(auto, 1) }
+        run("Measuring: the board switches off while it cools down", quiet = true) { repository.controlCalibration(auto, 1) }
     }
 
     fun cancelCalibration() {
@@ -130,6 +130,7 @@ class BoardViewModel @Inject constructor(
             Command.REBOOT -> "Board is rebooting"
             Command.IDENTIFY -> if (info.value?.isThunderboard == false) "Look at the board: the display is flashing" else "Look at the board: the LED is blinking"
             Command.RESET_ORIENTATION -> "Orientation zeroed"
+            Command.OPEN_PAIRING -> "Pairing open for 2 minutes: pair the other phone now"
         },
     ) { repository.send(command) }
 
