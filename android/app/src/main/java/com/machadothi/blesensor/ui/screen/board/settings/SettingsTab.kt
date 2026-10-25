@@ -339,9 +339,9 @@ private fun CalibrationCard(
                 Spacer(Modifier.height(12.dp))
                 Text("Measure the offset automatically", style = MaterialTheme.typography.titleSmall)
                 Text(
-                    "The board puts its air sensor to sleep, waits until the temperature stops falling " +
-                        "(10–${status.cooldownS / 60} min) and uses the drop as the offset. No air readings meanwhile, " +
-                        "then 3 min warm-up.",
+                    "The board switches itself off for ${status.cooldownS / 60} min, so nothing heats the sensor, " +
+                        "and its first reading afterwards against the one before gives the offset. " +
+                        "No readings and no connection meanwhile (the app reconnects), then 3 min warm-up.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

@@ -59,14 +59,6 @@ class BoardConnection(context: Context) : BleManager(context) {
 
     // Runs once after service discovery, before the connection counts as ready.
     override fun initialize() {
-        // The ESP32 Air board takes settings only from a paired phone (passkey on
-        // its display): pair right away, so the passkey prompt comes up now and
-        // not on the first write. Thunderboards don't need it.
-        if (characteristics.containsKey(Protocol.WIFI) && bluetoothDevice?.bondState != BluetoothDevice.BOND_BONDED) {
-            createBondInsecure()
-                .fail { _, status -> Log.w("BoardConnection", "Pairing failed ($status): settings can't be changed") }
-                .enqueue()
-        }
         requestMtu(247).enqueue()                       // packets are up to 27 bytes
         requestConnectionPriority(ConnectionPriorityRequest.CONNECTION_PRIORITY_HIGH).enqueue()
         subscribe(Protocol.ENV, envFlow)
@@ -87,6 +79,16 @@ class BoardConnection(context: Context) : BleManager(context) {
 
     override fun onServicesInvalidated() {
         characteristics.clear()
+    }
+
+    /** The ESP32 Air board keeps only bonded phones connected (pairing without a
+     *  code, while its pairing window is open). Thunderboards don't pair. */
+    val needsPairing: Boolean
+        get() = characteristics.containsKey(Protocol.WIFI) && bluetoothDevice?.bondState != BluetoothDevice.BOND_BONDED
+
+    /** Pairs and bonds; Android asks the user ("Pair with …?"), which can take a while. */
+    suspend fun pair() {
+        createBondInsecure().suspend()
     }
 
     suspend fun connectTo(device: BluetoothDevice) {

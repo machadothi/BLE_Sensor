@@ -33,8 +33,10 @@ object Protocol {
     val UPDATE: UUID = uuid(0x10)    // optional: over-the-air firmware updates (ESP32 Air) only
     const val OFFSET_MAX_C = 10f
 
-    /** Advertised manufacturer data: company id, then board id and protocol version. */
+    /** Advertised manufacturer data: company id, then board id, protocol version and
+     *  (ESP32 Air) flags: bit 0 = pairing window open. */
     const val ADV_COMPANY_ID = 0x02FF
+    const val ADV_FLAG_PAIRING_OPEN = 1
 
     const val NAME_MAX_BYTES = 20
 
@@ -155,7 +157,8 @@ enum class Command(val code: Int) {
     FACTORY_RESET(0x02),
     REBOOT(0x03),
     IDENTIFY(0x04),
-    RESET_ORIENTATION(0x05),
+    RESET_ORIENTATION(0x05),   // Thunderboard
+    OPEN_PAIRING(0x06),        // ESP32 Air: let another phone pair for 2 minutes
 }
 
 /** Allowed Config values; the board rejects others (ATT error 0x13). */
@@ -544,6 +547,7 @@ data class CalibrationStatus(
                 2 -> "the room temperature changed during the measurement"
                 3 -> "cancelled"
                 4 -> "the result was out of range"
+                5 -> "the board was reset or lost power while it was off"
                 else -> null
             }
             return CalibrationStatus(offset, auto, state, elapsed, cooldown, warm, now, result, age.takeIf { it != 0xFFFF_FFFFL }, reason)

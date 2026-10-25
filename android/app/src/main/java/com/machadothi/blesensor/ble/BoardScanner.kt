@@ -23,6 +23,8 @@ data class ScannedBoard(
     val rssi: Int,
     val board: String,
     val lastSeenMs: Long,
+    /** ESP32 Air: true while its pairing window is open; null if the board doesn't say. */
+    val pairingOpen: Boolean? = null,
 )
 
 class ScanFailedException(val code: Int) : Exception("Bluetooth scan failed (code $code)")
@@ -52,6 +54,7 @@ class BoardScanner @Inject constructor(@ApplicationContext private val context: 
                     rssi = result.rssi,
                     board = board,
                     lastSeenMs = SystemClock.elapsedRealtime(),
+                    pairingOpen = manufacturer?.takeIf { it.size >= 3 }?.let { it[2].toInt() and Protocol.ADV_FLAG_PAIRING_OPEN != 0 },
                 )
                 trySend(boards.values.toList())
             }
