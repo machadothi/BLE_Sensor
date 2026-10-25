@@ -295,9 +295,10 @@ ESP32 side is documented in that project's `docs/bluetooth.md`.
 The ESP32 soil moisture board (DIYMORE ESP32 + capacitive probe + DHT11,
 separate project, `~/git/soil_moisture_sensor`) speaks this protocol too.
 Board id `0x0D`, sensors `0x81` (temperature/humidity + soil moisture). It runs
-on an 18650 battery and deep-sleeps between measurements, so it advertises only
-while awake: 2 minutes after power-on or a press of its EN button, and 4 s at
-each measurement. A connected phone keeps it awake.
+on an 18650 battery and deep-sleeps between measurements (every minute). The
+timed wakes send BTHome only; the app packet goes out after a press of its
+BOOT button (or power-on, reset), until a phone connects or 5 minutes pass. A
+connected phone keeps it awake; 5 s after it disconnects the board sleeps.
 
 | Characteristic | ESP32 Soil |
 |---|---|

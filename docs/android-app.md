@@ -161,9 +161,9 @@ LED, Config, Display and Air are optional. The repository exposes `air`,
 
 The app also works with the ESP32 soil moisture board (board id `0x0D`, see
 [capabilities.md](capabilities.md#other-boards-esp32-soil)). Its radar lists it
-as "ESP32 Soil". It deep-sleeps on battery, so it shows up only while awake:
-press its **EN** button, then connect within 2 minutes. While the app is
-connected it stays awake.
+as "ESP32 Soil". It deep-sleeps on battery and shows up only after a press of
+its **BOOT** button: connect within 5 minutes. While the app is connected it
+stays awake; it sleeps again 5 s after the app disconnects.
 - **Live:** a soil moisture card (percentage, a word for it, a dry-to-wet bar
   and a trend), temperature, humidity, dew point, absolute humidity, then
   **Soil probe** (probe voltage, the dry and wet calibration, the measuring
