@@ -15,6 +15,7 @@ import com.machadothi.blesensor.ble.DisplayState
 import com.machadothi.blesensor.ble.Env
 import com.machadothi.blesensor.ble.LedState
 import com.machadothi.blesensor.ble.Motion
+import com.machadothi.blesensor.ble.SoilReading
 import com.machadothi.blesensor.ble.SystemInfo
 import kotlinx.coroutines.flow.StateFlow
 
@@ -37,6 +38,7 @@ data class History(
     val gyroDps: List<Float> = emptyList(),
     val eco2Ppm: List<Float> = emptyList(),
     val tvocPpb: List<Float> = emptyList(),
+    val moisturePct: List<Float> = emptyList(),
 )
 
 /** Everything the app knows about the connected board, as observable state. */
@@ -61,6 +63,8 @@ interface BoardRepository {
     val boardTime: StateFlow<BoardTime?>
     val wifi: StateFlow<WifiStatus?>
     val weather: StateFlow<WeatherInfo?>
+    /** Soil moisture and its calibration; null unless the board has a soil probe (ESP32 Soil). */
+    val soil: StateFlow<SoilReading?>
     /** Firmware updates; null unless the board can update itself (ESP32 Air). */
     val update: StateFlow<UpdateStatus?>
     /** False on boards without LED/config/motion (ESP32 Air): the UI hides those parts. */
@@ -98,4 +102,6 @@ interface BoardRepository {
      * install restarts the board: the link drops, and the app reconnects by itself.
      */
     suspend fun controlUpdate(command: ByteArray)
+    /** command: from SoilReading.calibrateDry / calibrateWet / set. Returns the value the board uses afterwards. */
+    suspend fun controlSoil(command: ByteArray): SoilReading?
 }

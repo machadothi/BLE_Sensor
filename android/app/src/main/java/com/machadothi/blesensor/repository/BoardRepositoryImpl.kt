@@ -19,6 +19,7 @@ import com.machadothi.blesensor.ble.DisplayState
 import com.machadothi.blesensor.ble.Env
 import com.machadothi.blesensor.ble.LedState
 import com.machadothi.blesensor.ble.Motion
+import com.machadothi.blesensor.ble.SoilReading
 import com.machadothi.blesensor.ble.SystemInfo
 import com.machadothi.blesensor.ble.Protocol
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -75,6 +76,7 @@ class BoardRepositoryImpl @Inject constructor(
     override val wifi = MutableStateFlow<WifiStatus?>(null)
     override val weather = MutableStateFlow<WeatherInfo?>(null)
     override val update = MutableStateFlow<UpdateStatus?>(null)
+    override val soil = MutableStateFlow<SoilReading?>(null)
     override val hasLed = MutableStateFlow(false)
     override val hasConfig = MutableStateFlow(false)
     override val rssi = MutableStateFlow<Int?>(null)
@@ -110,7 +112,7 @@ class BoardRepositoryImpl @Inject constructor(
                 } catch (e: Exception) {
                     throw IllegalStateException(
                         "Couldn't pair. The board takes new phones only in the first 2 minutes after it starts: " +
-                            "press its reset button and try again."
+                            "press its reset button (BOOT on the soil board) and try again."
                     )
                 }
             }
@@ -165,6 +167,7 @@ class BoardRepositoryImpl @Inject constructor(
         wifi.value = null
         weather.value = null
         update.value = null
+        soil.value = null
         hasLed.value = false
         hasConfig.value = false
         rssi.value = null
@@ -197,6 +200,7 @@ class BoardRepositoryImpl @Inject constructor(
         update.value = if (conn.has(Protocol.UPDATE)) runCatching { UpdateStatus.decode(conn.read(Protocol.UPDATE)) }.getOrNull() else null
         wifi.value = if (conn.has(Protocol.WIFI)) runCatching { WifiStatus.decode(conn.read(Protocol.WIFI)) }.getOrNull() else null
         system.value = if (conn.has(Protocol.SYSTEM)) runCatching { SystemInfo.decode(conn.read(Protocol.SYSTEM)) }.getOrNull() else null
+        soil.value = if (conn.has(Protocol.SOIL)) readSoil(conn) else null
         // The first Env notification can take a few seconds; read one now.
         runCatching { Env.decode(conn.read(Protocol.ENV)) }.onSuccess { env.value = it }
     }
@@ -251,6 +255,14 @@ class BoardRepositoryImpl @Inject constructor(
             scope.launch {
                 conn.systemNotifications.collect { bytes ->
                     runCatching { SystemInfo.decode(bytes) }.onSuccess { system.value = it }
+                }
+            },
+            scope.launch {
+                conn.soilNotifications.collect { bytes ->
+                    runCatching { SoilReading.decode(bytes) }.onSuccess { sample ->
+                        soil.value = sample
+                        historyBuffers.addSoil(sample)
+                    }
                 }
             },
             scope.launch {
@@ -365,6 +377,17 @@ class BoardRepositoryImpl @Inject constructor(
         }
     }
 
+    private suspend fun readSoil(conn: BoardConnection): SoilReading? =
+        runCatching { SoilReading.decode(conn.read(Protocol.SOIL)) }.getOrNull()
+
+    override suspend fun controlSoil(command: ByteArray): SoilReading? {
+        val conn = requireConnection()
+        conn.write(Protocol.SOIL, command)
+        // The board can't refuse a write over the air: it writes back the value it
+        // kept, so read what it uses now.
+        return readSoil(conn)?.also { soil.value = it }
+    }
+
     /** After a restart we asked for: try to reconnect for a while, quietly. */
     private fun reconnectAfterRestart() {
         val (address, name) = lastBoard ?: return
@@ -431,6 +454,7 @@ private class HistoryBuffers {
     private val gyro = ArrayDeque<Float>()
     private val eco2 = ArrayDeque<Float>()
     private val tvoc = ArrayDeque<Float>()
+    private val moisture = ArrayDeque<Float>()
 
     private fun ArrayDeque<Float>.push(value: Float?, max: Int) {
         if (value == null) return
@@ -450,6 +474,10 @@ private class HistoryBuffers {
         tvoc.push(air.tvocPpb?.toFloat(), ENV_HISTORY)
     }
 
+    @Synchronized fun addSoil(soil: SoilReading) {
+        moisture.push(soil.moisturePct, ENV_HISTORY)
+    }
+
     @Synchronized fun addMotion(motion: Motion) {
         accel.push(motion.accelG.magnitude, MOTION_HISTORY)
         gyro.push(motion.gyroDps.magnitude, MOTION_HISTORY)
@@ -457,10 +485,10 @@ private class HistoryBuffers {
 
     @Synchronized fun snapshot() = History(
         temperature.toList(), humidity.toList(), lux.toList(), hall.toList(), accel.toList(), gyro.toList(),
-        eco2.toList(), tvoc.toList(),
+        eco2.toList(), tvoc.toList(), moisture.toList(),
     )
 
     @Synchronized fun clear() {
-        listOf(temperature, humidity, lux, hall, accel, gyro, eco2, tvoc).forEach { it.clear() }
+        listOf(temperature, humidity, lux, hall, accel, gyro, eco2, tvoc, moisture).forEach { it.clear() }
     }
 }

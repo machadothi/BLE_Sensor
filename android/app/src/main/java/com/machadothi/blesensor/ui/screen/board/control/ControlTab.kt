@@ -123,11 +123,14 @@ fun ControlTab(viewModel: BoardViewModel) {
         GlowCard(Modifier.fillMaxWidth(), accent = Teal) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 CardHeader(Icons.Rounded.Visibility, "Board actions", Teal)
-                val identifyHint = if (hasLed) "Blink the LED fast for 3 s to spot this board" else "Flash the display for 3 s to spot this board"
-                ActionButton(Icons.Rounded.Visibility, "Identify", identifyHint) {
-                    viewModel.send(Command.IDENTIFY)
+                // The ESP32 Soil board has no display, and its LED isn't confirmed yet.
+                if (info?.board != Protocol.BOARD_ESP32_SOIL) {
+                    val identifyHint = if (hasLed) "Blink the LED fast for 3 s to spot this board" else "Flash the display for 3 s to spot this board"
+                    ActionButton(Icons.Rounded.Visibility, "Identify", identifyHint) {
+                        viewModel.send(Command.IDENTIFY)
+                    }
                 }
-                if (info?.board == Protocol.BOARD_ESP32_AIR) {
+                if (info?.board?.let(Protocol::pairsInWindow) == true) {
                     ActionButton(Icons.Rounded.PhonelinkSetup, "Add a phone", "Let another phone pair with this board for 2 minutes") {
                         viewModel.send(Command.OPEN_PAIRING)
                     }
@@ -148,7 +151,10 @@ fun ControlTab(viewModel: BoardViewModel) {
             onConfirm = { viewModel.send(Command.REBOOT) }, onDismiss = { confirm = null },
         )
         Command.FACTORY_RESET -> ConfirmDialog(
-            "Factory reset?", "All settings and the board's name go back to their defaults.", "Reset",
+            "Factory reset?",
+            if (info?.isThunderboard == false) "All settings and the board's name go back to their defaults, and the board forgets paired phones and restarts."
+            else "All settings and the board's name go back to their defaults.",
+            "Reset",
             onConfirm = { viewModel.send(Command.FACTORY_RESET) }, onDismiss = { confirm = null },
         )
         else -> Unit

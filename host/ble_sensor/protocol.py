@@ -29,13 +29,16 @@ COMMAND_UUID = _uuid(0x07)
 NAME_UUID = _uuid(0x08)
 DISPLAY_UUID = _uuid(0x09)
 AIR_UUID = _uuid(0x0A)       # ESP32 Air board only
-SYSTEM_UUID = _uuid(0x0B)    # ESP32 Air board only
+SYSTEM_UUID = _uuid(0x0B)    # ESP32 boards only
+SOIL_UUID = _uuid(0x11)      # ESP32 Soil board only
 
 # Advertised manufacturer data: company id -> (board id, protocol version)
 ADV_COMPANY_ID = 0x02FF  # Silicon Laboratories
 
-BOARDS = {0x0A: "BRD4184A", 0x0B: "BRD4184B", 0x0C: "ESP32 Air"}
+BOARDS = {0x0A: "BRD4184A", 0x0B: "BRD4184B", 0x0C: "ESP32 Air", 0x0D: "ESP32 Soil"}
 ESP32_AIR = "ESP32 Air"   # ESP32 + ENS160/AHT21 air monitor: no motion, button, LED or config
+ESP32_SOIL = "ESP32 Soil"  # ESP32 + soil probe/DHT11 (~/git/soil_moisture_sensor): same, and no display
+ESP32_BOARDS = (ESP32_AIR, ESP32_SOIL)
 
 # Sensor bits used by Config.sensor_mask and Info.available
 SENSOR_BITS = {
@@ -46,9 +49,10 @@ SENSOR_BITS = {
     "sound": 1 << 4,   # microphone (BRD4184B)
     "supply": 1 << 5,  # supply voltage
     "air": 1 << 6,     # ENS160 air quality (ESP32 Air board): reported in Info only
+    "soil": 1 << 7,    # soil moisture (ESP32 Soil board): reported in Info only
 }
-# Sensors Config can switch on and off (the Thunderboard's); not "air".
-CONFIG_SENSORS = [name for name in SENSOR_BITS if name != "air"]
+# Sensors Config can switch on and off (the Thunderboard's); not "air" or "soil".
+CONFIG_SENSORS = [name for name in SENSOR_BITS if name not in ("air", "soil")]
 
 LED_MODES = {"off": 0, "on": 1, "blink": 2}
 
@@ -335,6 +339,28 @@ class Air:
             if comp_t != 0x7FFF:
                 air.compensation_c, air.compensation_pct = comp_t / 100, comp_rh / 100
         return air
+
+
+@dataclass
+class Soil:
+    """Soil moisture (ESP32 Soil board). The probe's voltage drops as the soil
+    gets wetter; dry_mv (in air) and wet_mv (in water) are the ends of the scale."""
+    uptime_ms: int
+    probe_mv: Optional[int]
+    moisture_pct: Optional[float]
+    dry_mv: int
+    wet_mv: int
+    interval_s: int                  # deep sleep between measurements, 0 = never sleeps
+    battery_v: Optional[float]
+    battery_pct: Optional[int]
+
+    FORMAT = struct.Struct("<I H H H H H H B 3x")
+
+    @classmethod
+    def decode(cls, data: bytes) -> "Soil":
+        uptime, probe, moisture, dry, wet, interval, battery_mv, battery_pct = cls.FORMAT.unpack(data[: cls.FORMAT.size])
+        return cls(uptime, probe or None, None if moisture == 0xFFFF else moisture / 100, dry, wet, interval,
+                   battery_mv / 1000 if battery_mv else None, None if battery_pct == 0xFF else battery_pct)
 
 
 RESET_CAUSES = {1: "power on", 2: "reset pin / USB", 3: "watchdog", 4: "deep sleep", 5: "software"}

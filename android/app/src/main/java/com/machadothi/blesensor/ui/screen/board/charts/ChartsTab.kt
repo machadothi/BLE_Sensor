@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Co2
 import androidx.compose.material.icons.rounded.Explore
+import androidx.compose.material.icons.rounded.Grass
 import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Speed
@@ -60,10 +61,11 @@ private data class Series(
 fun ChartsTab(viewModel: BoardViewModel) {
     val history by viewModel.history.collectAsStateWithLifecycle()
     val config by viewModel.config.collectAsStateWithLifecycle()
-    val envMs = config?.envPeriodMs ?: 2000   // the ESP32 Air board sends every 2 s
+    val envMs = config?.envPeriodMs ?: 2000   // the ESP32 boards send every 2 s
     val motionMs = config?.motionPeriodMs ?: 50
 
     val series = listOf(
+        Series("Soil moisture", Icons.Rounded.Grass, Lime, "%", history.moisturePct, "%.1f", envMs),
         Series("Temperature", Icons.Rounded.Thermostat, Coral, "°C", history.temperatureC, "%.2f", envMs),
         Series("Humidity", Icons.Rounded.WaterDrop, Sky, "%", history.humidityPct, "%.1f", envMs),
         Series("Light", Icons.Rounded.LightMode, Amber, "lx", history.lux, "%.0f", envMs),

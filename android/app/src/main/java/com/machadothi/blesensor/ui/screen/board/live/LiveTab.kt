@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.Co2
 import androidx.compose.material.icons.rounded.DeveloperBoard
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Grass
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Opacity
@@ -60,6 +61,7 @@ import com.machadothi.blesensor.ble.AirState
 import com.machadothi.blesensor.ble.ButtonState
 import com.machadothi.blesensor.ble.Derived
 import com.machadothi.blesensor.ble.Env
+import com.machadothi.blesensor.ble.SoilReading
 import com.machadothi.blesensor.ble.SystemInfo
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -98,6 +100,8 @@ fun LiveTab(viewModel: BoardViewModel) {
     val button by viewModel.button.collectAsStateWithLifecycle()
     val air by viewModel.air.collectAsStateWithLifecycle()
     val system by viewModel.system.collectAsStateWithLifecycle()
+    val soil by viewModel.soil.collectAsStateWithLifecycle()
+    val wifi by viewModel.wifi.collectAsStateWithLifecycle()
 
     val available = info?.available ?: emptySet()
     // Boards without a Config characteristic (ESP32 Air) always run all their sensors.
@@ -158,6 +162,9 @@ fun LiveTab(viewModel: BoardViewModel) {
         if (shows(Sensor.AIR)) {
             item(span = { GridItemSpan(maxLineSpan) }) { AirQualityCard(air) }
         }
+        if (shows(Sensor.SOIL)) {
+            item(span = { GridItemSpan(maxLineSpan) }) { SoilCard(soil, history.moisturePct) }
+        }
         if (button != null) {
             item(span = { GridItemSpan(maxLineSpan) }) { ButtonCard(button) }
         }
@@ -165,7 +172,10 @@ fun LiveTab(viewModel: BoardViewModel) {
         if (shows(Sensor.AIR)) {
             item(span = { GridItemSpan(maxLineSpan) }) { SensorDetailsCard(air, e, system) }
         }
-        system?.let { info -> item(span = { GridItemSpan(maxLineSpan) }) { BoardStatusCard(info) } }
+        if (shows(Sensor.SOIL)) {
+            item(span = { GridItemSpan(maxLineSpan) }) { SoilDetailsCard(soil) }
+        }
+        system?.let { info -> item(span = { GridItemSpan(maxLineSpan) }) { BoardStatusCard(info, hasWifi = wifi != null) } }
     }
 }
 
@@ -283,6 +293,70 @@ private fun AirQualityCard(air: AirReading?) {
     }
 }
 
+/**
+ * Soil moisture (ESP32 Soil): the big number, a bar from dry to wet, and a word
+ * for it. The words are a rough guide; how wet a plant likes it varies.
+ */
+@Composable
+private fun SoilCard(soil: SoilReading?, trend: List<Float>) {
+    val moisture = soil?.moisturePct
+    val (word, accent) = when {
+        moisture == null -> "—" to MaterialTheme.colorScheme.outline
+        moisture < 20f -> "Dry: time to water" to Coral
+        moisture < 40f -> "Getting dry" to Amber
+        moisture < 75f -> "Moist" to Lime
+        else -> "Wet" to Sky
+    }
+    val color by animateColorAsState(accent, tween(600), label = "soil")
+    GlowCard(Modifier.fillMaxWidth(), accent = color, highlighted = moisture != null && moisture < 20f) {
+        Column {
+            CardHeader(Icons.Rounded.Grass, "Soil moisture", color)
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.Bottom) {
+                AnimatedNumber(moisture, { "%.0f".format(it) })
+                Text(" %", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 5.dp))
+            }
+            Text(word, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(10.dp))
+            val fill by animateFloatAsState((moisture ?: 0f) / 100f, tween(600), label = "fill")
+            Box(Modifier.fillMaxWidth().height(8.dp).background(color.copy(alpha = 0.22f), RoundedCornerShape(4.dp))) {
+                Box(Modifier.fillMaxWidth(fill).height(8.dp).background(color, RoundedCornerShape(4.dp)))
+            }
+            if (trend.size > 1) {
+                Spacer(Modifier.height(8.dp))
+                Sparkline(trend, color, Modifier.fillMaxWidth().height(36.dp))
+            }
+        }
+    }
+}
+
+/** The probe behind the percentage: its voltage, the calibration, sleep and battery. */
+@Composable
+private fun SoilDetailsCard(soil: SoilReading?) {
+    GlowCard(Modifier.fillMaxWidth(), accent = Lime) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            CardHeader(Icons.Rounded.Memory, "Soil probe", Lime)
+            DetailRow("Probe output", soil?.probeMv?.let { "$it mV" } ?: "—")
+            DetailRow("Dry (in air)", soil?.let { "${it.dryMv} mV" } ?: "—")
+            DetailRow("Wet (in water)", soil?.let { "${it.wetMv} mV" } ?: "—")
+            DetailRow(
+                "Measures every",
+                when (soil?.intervalS) {
+                    null -> "—"
+                    0 -> "never sleeps"
+                    else -> formatDuration(soil.intervalS.toLong())
+                },
+            )
+            DetailRow("Battery", soil?.batteryV?.let { "%.2f V · %d %%".format(it, soil.batteryPct ?: 0) } ?: "not measured")
+            Text(
+                "Lower voltage means wetter soil. Calibrate in Settings: probe in air, then in water.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
 /** Everything the two sensors report beyond the main readings (datasheet details). */
 @Composable
 private fun SensorDetailsCard(air: AirReading?, env: Env?, system: SystemInfo?) {
@@ -321,14 +395,16 @@ private fun SensorDetailsCard(air: AirReading?, env: Env?, system: SystemInfo?) 
     }
 }
 
-/** The ESP32 itself: network, memory, chip temperature, firmware. */
+/** The ESP32 itself: network (if it has Wi-Fi), memory, chip temperature, firmware. */
 @Composable
-private fun BoardStatusCard(info: SystemInfo) {
+private fun BoardStatusCard(info: SystemInfo, hasWifi: Boolean) {
     GlowCard(Modifier.fillMaxWidth(), accent = Sky) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             CardHeader(Icons.Rounded.DeveloperBoard, "Board", Sky)
-            DetailRow("Wi-Fi", if (info.wifi) "${info.wifiRssi ?: "—"} dBm · ${info.ip ?: "—"}" else "offline")
-            DetailRow("MQTT", if (info.mqtt) "connected" else "offline")
+            if (hasWifi) {   // not on the ESP32 Soil board: Bluetooth only
+                DetailRow("Wi-Fi", if (info.wifi) "${info.wifiRssi ?: "—"} dBm · ${info.ip ?: "—"}" else "offline")
+                DetailRow("MQTT", if (info.mqtt) "connected" else "offline")
+            }
             DetailRow("Uptime", formatDuration(info.uptimeS))
             DetailRow("Last reset", info.resetCause)
             DetailRow("Chip temperature", info.chipTemperatureC?.let { "%.1f °C".format(it) } ?: "—")

@@ -28,6 +28,9 @@
 // firmware/ble.py) speaks the same protocol with this board id. It has Env, Info,
 // Command, Name, Display and Air, and no Motion, Button, LED or Config.
 #define BOARD_ID_ESP32_AIR            0x0C
+// Not this firmware either: the ESP32 soil moisture board (~/git/soil_moisture_sensor,
+// firmware/protocol.py). It has Env, Info, Command, Name, System and Soil.
+#define BOARD_ID_ESP32_SOIL           0x0D
 
 // Sensor bits: Config.sensor_mask (which sensors to sample) and
 // Info.available_mask (which sensors this board has).
@@ -39,6 +42,7 @@
 #define SENSOR_BIT_SUPPLY             (1u << 5) // supply voltage
 #define SENSOR_BIT_ALL                0x3Fu     // this firmware's sensors
 #define SENSOR_BIT_AIR                (1u << 6) // ENS160 air quality (ESP32 Air board only)
+#define SENSOR_BIT_SOIL               (1u << 7) // soil moisture (ESP32 Soil board only)
 
 // Env.valid bits: which fields of an Env packet hold a fresh reading.
 #define ENV_VALID_TEMPERATURE         (1u << 0)
@@ -187,7 +191,24 @@ typedef struct {
   uint16_t compensation_pct_x100; // humidity the ENS160 uses
 } ble_sensor_air_t;
 
-// System (read, notify), characteristic a7e4000b: ESP32 Air board only.
+// Soil (read, write, notify), characteristic a7e40011: ESP32 Soil board only.
+// Write 1 byte (1: the probe's current reading becomes dry_mv, 2: wet_mv),
+// 4 bytes (dry_mv, wet_mv) or 6 bytes (dry_mv, wet_mv, interval_s). The board
+// keeps dry_mv at least 200 mV above wet_mv, interval_s 0 or 60-65535.
+typedef struct {
+  uint32_t uptime_ms;
+  uint16_t probe_mv;              // probe output, 0 = none
+  uint16_t moisture_pct_x100;     // 0xFFFF = none
+  uint16_t dry_mv;                // probe in air: 0 %
+  uint16_t wet_mv;                // probe in water: 100 %
+  uint16_t interval_s;            // deep sleep between measurements, 0 = never sleeps
+  uint16_t battery_mv;            // 0 = not measured
+  uint8_t  battery_pct;           // 0xFF = not measured
+  uint8_t  reserved[3];
+} ble_sensor_soil_t;
+
+// System (read, notify), characteristic a7e4000b: ESP32 boards only
+// (the Soil board leaves the Wi-Fi fields 0).
 typedef struct {
   uint32_t uptime_s;
   uint32_t free_ram;
@@ -214,6 +235,7 @@ _Static_assert(sizeof(ble_sensor_led_t) == 5, "LED must be 5 bytes");
 _Static_assert(sizeof(ble_sensor_config_t) == 12, "Config must be 12 bytes");
 _Static_assert(sizeof(ble_sensor_info_t) == 4, "Info must be 4 bytes");
 _Static_assert(sizeof(ble_sensor_display_t) == 5, "Display must be 5 bytes");
+_Static_assert(sizeof(ble_sensor_soil_t) == 20, "Soil must be 20 bytes");
 _Static_assert(sizeof(ble_sensor_air_t) == 22, "Air must be 22 bytes");
 _Static_assert(sizeof(ble_sensor_system_t) == 32, "System must be 32 bytes");
 

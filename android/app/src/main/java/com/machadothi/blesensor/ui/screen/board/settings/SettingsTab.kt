@@ -34,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Badge
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CellTower
+import androidx.compose.material.icons.rounded.Grass
 import androidx.compose.material.icons.rounded.Sensors
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.Button
@@ -58,6 +59,7 @@ import com.machadothi.blesensor.ble.BoardConfig
 import com.machadothi.blesensor.ble.Limits
 import com.machadothi.blesensor.ble.Protocol
 import com.machadothi.blesensor.ble.Sensor
+import com.machadothi.blesensor.ble.SoilReading
 import com.machadothi.blesensor.ui.components.CardHeader
 import com.machadothi.blesensor.ui.components.GlowCard
 import com.machadothi.blesensor.ui.components.LabeledSlider
@@ -65,6 +67,7 @@ import com.machadothi.blesensor.ui.components.formatMs
 import com.machadothi.blesensor.ui.components.niceRound
 import com.machadothi.blesensor.ui.screen.board.BoardViewModel
 import com.machadothi.blesensor.ui.theme.Amber
+import com.machadothi.blesensor.ui.theme.Lime
 import com.machadothi.blesensor.ui.theme.Sky
 import com.machadothi.blesensor.ui.theme.Teal
 import com.machadothi.blesensor.ui.theme.Violet
@@ -78,12 +81,21 @@ fun SettingsTab(viewModel: BoardViewModel) {
     val display by viewModel.display.collectAsStateWithLifecycle()
     val current = saved
     if (current == null) {
-        // Boards without a Config characteristic (ESP32 Air): name and display only.
+        // Boards without a Config characteristic (ESP32 Air, ESP32 Soil): their own cards.
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             NameCard(savedName, viewModel::setName)
+            val soil by viewModel.soil.collectAsStateWithLifecycle()
+            soil?.let {
+                SoilCalibrationCard(
+                    it,
+                    onDry = viewModel::calibrateSoilDry,
+                    onWet = viewModel::calibrateSoilWet,
+                    onInterval = viewModel::setSoilInterval,
+                )
+            }
             val wifi by viewModel.wifi.collectAsStateWithLifecycle()
             val boardTime by viewModel.boardTime.collectAsStateWithLifecycle()
             wifi?.let {
@@ -298,6 +310,70 @@ private fun NameCard(savedName: String?, onSave: (String) -> Unit) {
             }
         }
     }
+}
+
+/**
+ * Soil probe calibration (ESP32 Soil): the probe's voltage in air and in water
+ * are the ends of the 0-100 % scale. Also how long the board sleeps between
+ * measurements; it stays awake while the app is connected.
+ */
+@Composable
+private fun SoilCalibrationCard(soil: SoilReading, onDry: () -> Unit, onWet: () -> Unit, onInterval: (Int) -> Unit) {
+    var intervalS by remember(soil.intervalS) { mutableStateOf(soil.intervalS.takeIf { it > 0 } ?: 300) }
+    GlowCard(Modifier.fillMaxWidth(), accent = Lime) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            CardHeader(Icons.Rounded.Grass, "Soil calibration", Lime)
+            Row(Modifier.fillMaxWidth()) {
+                CalibrationValue("Probe now", soil.probeMv?.let { "$it mV" } ?: "—", Modifier.weight(1f))
+                CalibrationValue("Dry", "${soil.dryMv} mV", Modifier.weight(1f))
+                CalibrationValue("Wet", "${soil.wetMv} mV", Modifier.weight(1f))
+            }
+            Text(
+                "1. Clean, dry probe in the air: Set dry.\n" +
+                    "2. Probe in a glass of water up to the line, electronics dry: Set wet.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilledTonalButton(onClick = onDry, modifier = Modifier.weight(1f)) { Text("Set dry") }
+                FilledTonalButton(onClick = onWet, modifier = Modifier.weight(1f)) { Text("Set wet") }
+            }
+            Spacer(Modifier.height(4.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Stay awake", style = MaterialTheme.typography.bodyLarge)
+                    Text("Never sleep, for USB power", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                AppSwitch(checked = soil.intervalS == 0, onCheckedChange = { on -> onInterval(if (on) 0 else intervalS) })
+            }
+            if (soil.intervalS != 0) {
+                LabeledSlider(
+                    label = "Measure every",
+                    valueText = formatMinutes(intervalS),
+                    value = intervalS.toFloat(),
+                    range = SoilReading.intervalS.first.toFloat()..SoilReading.intervalS.last.toFloat(),
+                    logarithmic = true,
+                    hint = "Deep sleep in between; the board is reachable from the app only when awake",
+                    onChange = { intervalS = ((it / 60).roundToInt() * 60).coerceIn(SoilReading.intervalS) },
+                    onChangeFinished = { onInterval(intervalS) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CalibrationValue(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+private fun formatMinutes(seconds: Int): String = when {
+    seconds < 3600 -> "${seconds / 60} min"
+    seconds % 3600 == 0 -> "${seconds / 3600} h"
+    else -> "${seconds / 3600} h ${seconds % 3600 / 60} min"
 }
 
 /**

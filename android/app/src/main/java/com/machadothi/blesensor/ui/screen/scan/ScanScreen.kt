@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.machadothi.blesensor.ble.KnownBoard
+import com.machadothi.blesensor.ble.Protocol
 import com.machadothi.blesensor.ble.ScannedBoard
 import com.machadothi.blesensor.ui.components.SignalBars
 
@@ -117,7 +118,7 @@ fun ScanScreen(onBoardSelected: (ScannedBoard) -> Unit, viewModel: ScanViewModel
                             board,
                             status = when (board.pairingOpen) {
                                 true -> "Ready to pair"
-                                false -> "Restart the board to pair"
+                                false -> if (board.board == Protocol.BOARD_ESP32_SOIL) "Press BOOT to pair" else "Restart the board to pair"
                                 null -> null
                             },
                             highlight = board.pairingOpen == true,
@@ -148,7 +149,7 @@ fun ScanScreen(onBoardSelected: (ScannedBoard) -> Unit, viewModel: ScanViewModel
             text = {
                 Text(
                     "This board takes new phones only in the first 2 minutes after it starts. " +
-                        "Press its reset button (or unplug and plug it back in), then tap the board again " +
+                        "To start it, ${Protocol.pairingAction(board.board)}, then tap the board again " +
                         "when it shows \"Ready to pair\". Android asks to pair: no code needed."
                 )
             },
@@ -159,7 +160,7 @@ fun ScanScreen(onBoardSelected: (ScannedBoard) -> Unit, viewModel: ScanViewModel
         AlertDialog(
             onDismissRequest = { forgetting = null },
             title = { Text("Forget ${k.name}?") },
-            text = { Text("This phone forgets the board. To connect again, restart the board and pair within 2 minutes.") },
+            text = { Text("This phone forgets the board. To connect again, ${Protocol.pairingAction(k.board)} and pair within 2 minutes.") },
             confirmButton = { TextButton(onClick = { viewModel.forget(k.address); forgetting = null }) { Text("Forget") } },
             dismissButton = { TextButton(onClick = { forgetting = null }) { Text("Cancel") } },
         )
