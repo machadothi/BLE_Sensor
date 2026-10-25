@@ -140,14 +140,15 @@ adapts:
     - "Install automatically".
 - **Pairing and "Your boards".** This board talks only to phones it's bonded
   with, and takes new ones only while its **pairing window** is open.
-  - **Opening the window:** press the board's reset button twice, a second
-    apart (2 minutes); or on a new board, the first 10 minutes after
-    start-up; or **Control → Add a phone** on an already paired phone.
+  - **Opening the window:** it's open for the first 2 minutes after the
+    board starts: press its reset button, or unplug and plug it in. On a new
+    board, 10 minutes. Or use **Control → Add a phone** on an already paired
+    phone.
   - **In the scan:**
     - a board with the window open shows **Ready to pair**. Tap it, and
       Android asks to pair, with no code;
-    - one with the window closed shows "Press its reset button twice to
-      pair", and tapping it explains how.
+    - one with the window closed shows "Restart the board to pair", and
+      tapping it explains how.
   - **Your boards:** once paired, the board is listed at the top of the scan
     screen. Tap it to connect, with no scan and no button press. Long-press
     it to **forget** it, which also removes Android's bond.

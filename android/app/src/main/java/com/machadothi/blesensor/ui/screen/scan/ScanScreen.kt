@@ -117,7 +117,7 @@ fun ScanScreen(onBoardSelected: (ScannedBoard) -> Unit, viewModel: ScanViewModel
                             board,
                             status = when (board.pairingOpen) {
                                 true -> "Ready to pair"
-                                false -> "Press its reset button twice to pair"
+                                false -> "Restart the board to pair"
                                 null -> null
                             },
                             highlight = board.pairingOpen == true,
@@ -147,9 +147,9 @@ fun ScanScreen(onBoardSelected: (ScannedBoard) -> Unit, viewModel: ScanViewModel
             title = { Text("Pair ${board.name}") },
             text = {
                 Text(
-                    "This board takes new phones only for 2 minutes after its reset button is pressed twice. " +
-                        "Press it twice, a second apart, then tap the board again when it shows \"Ready to pair\". " +
-                        "Android asks to pair: no code needed."
+                    "This board takes new phones only in the first 2 minutes after it starts. " +
+                        "Press its reset button (or unplug and plug it back in), then tap the board again " +
+                        "when it shows \"Ready to pair\". Android asks to pair: no code needed."
                 )
             },
             confirmButton = { TextButton(onClick = { hintFor = null; viewModel.startScan() }) { Text("Scan again") } },
@@ -159,7 +159,7 @@ fun ScanScreen(onBoardSelected: (ScannedBoard) -> Unit, viewModel: ScanViewModel
         AlertDialog(
             onDismissRequest = { forgetting = null },
             title = { Text("Forget ${k.name}?") },
-            text = { Text("This phone forgets the board. To connect again, press the board's reset button twice and pair.") },
+            text = { Text("This phone forgets the board. To connect again, restart the board and pair within 2 minutes.") },
             confirmButton = { TextButton(onClick = { viewModel.forget(k.address); forgetting = null }) { Text("Forget") } },
             dismissButton = { TextButton(onClick = { forgetting = null }) { Text("Cancel") } },
         )
