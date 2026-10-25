@@ -20,7 +20,8 @@ import kotlinx.coroutines.flow.StateFlow
 
 sealed interface ConnectionStatus {
     data object Idle : ConnectionStatus
-    data class Connecting(val name: String) : ConnectionStatus
+    /** pairing: waiting for the user to accept Android's pairing prompt. */
+    data class Connecting(val name: String, val pairing: Boolean = false) : ConnectionStatus
     data class Connected(val name: String, val address: String) : ConnectionStatus
     data class Failed(val message: String) : ConnectionStatus
     data class Lost(val message: String) : ConnectionStatus

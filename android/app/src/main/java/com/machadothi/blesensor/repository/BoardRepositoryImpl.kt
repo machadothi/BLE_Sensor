@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import no.nordicsemi.android.ble.observer.ConnectionObserver
 import android.bluetooth.BluetoothDevice
 import javax.inject.Inject
@@ -41,6 +42,7 @@ private const val MOTION_HISTORY = 400     // samples kept per motion chart
 private const val HISTORY_PUBLISH_MS = 66L // charts redraw at most ~15 times a second
 private const val RSSI_POLL_MS = 2_000L
 private const val RESTART_DELAY_MS = 12_000L   // before reconnecting after a restart we asked for
+private const val PAIRING_TIMEOUT_MS = 60_000L  // the user answers Android's pairing prompt
 
 @Singleton
 class BoardRepositoryImpl @Inject constructor(
@@ -99,6 +101,19 @@ class BoardRepositoryImpl @Inject constructor(
         connection = newConnection
         try {
             newConnection.connectTo(device)
+            // Pairing outside connectTo(): its 15 s timeout is for reaching the
+            // board, not for the user answering Android's "Pair?" prompt.
+            if (newConnection.needsPairing) {
+                status.value = ConnectionStatus.Connecting(name, pairing = true)
+                try {
+                    withTimeout(PAIRING_TIMEOUT_MS) { newConnection.pair() }
+                } catch (e: Exception) {
+                    throw IllegalStateException(
+                        "Couldn't pair. The board takes new phones only in the first 2 minutes after it starts: " +
+                            "press its reset button and try again."
+                    )
+                }
+            }
             startSession(newConnection)
             refreshAll(newConnection)
             status.value = ConnectionStatus.Connected(this.name.value ?: name, address)

@@ -154,7 +154,7 @@ fun BoardScreen(onBack: () -> Unit, viewModel: BoardViewModel = hiltViewModel())
                     ConnectionStatus.Connected::class -> TabContent(tab, viewModel)
                     ConnectionStatus.Failed::class, ConnectionStatus.Lost::class ->
                         ProblemView(statusLabel(status), onRetry = viewModel::connect, onBack = onBack)
-                    else -> ConnectingView(viewModel.boardName)
+                    else -> ConnectingView(viewModel.boardName, pairing = (status as? ConnectionStatus.Connecting)?.pairing == true)
                 }
             }
         }
@@ -184,20 +184,29 @@ private fun TabContent(tab: Tab, viewModel: BoardViewModel) {
 
 private fun statusLabel(status: ConnectionStatus): String = when (status) {
     ConnectionStatus.Idle -> "Disconnected"
-    is ConnectionStatus.Connecting -> "Connecting…"
+    is ConnectionStatus.Connecting -> if (status.pairing) "Pairing…" else "Connecting…"
     is ConnectionStatus.Connected -> "Connected"
     is ConnectionStatus.Failed -> "Couldn't connect: ${status.message}"
     is ConnectionStatus.Lost -> status.message
 }
 
 @Composable
-private fun ConnectingView(name: String) {
+private fun ConnectingView(name: String, pairing: Boolean = false) {
     val pulse by rememberInfiniteTransition(label = "connecting")
         .animateFloat(0.85f, 1.15f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "pulse")
     Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Icon(Icons.Rounded.Memory, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(72.dp).scale(pulse))
         Spacer(Modifier.height(20.dp))
-        Text("Connecting to $name", style = MaterialTheme.typography.titleMedium)
+        Text(if (pairing) "Pairing with $name" else "Connecting to $name", style = MaterialTheme.typography.titleMedium)
+        if (pairing) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Tap \"Pair\" in Android's prompt. No code is needed.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
 
