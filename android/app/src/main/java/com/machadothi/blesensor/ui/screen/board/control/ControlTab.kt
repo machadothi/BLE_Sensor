@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.PhonelinkSetup
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.SettingsBackupRestore
 import androidx.compose.material.icons.rounded.Visibility
@@ -37,9 +38,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.machadothi.blesensor.ble.Command
+import com.machadothi.blesensor.ble.Protocol
 import com.machadothi.blesensor.ble.LedMode
 import com.machadothi.blesensor.ble.LedState
-import com.machadothi.blesensor.ble.Protocol
 import com.machadothi.blesensor.ble.Limits
 import com.machadothi.blesensor.ui.components.CardHeader
 import com.machadothi.blesensor.ui.components.ConfirmDialog
@@ -127,6 +128,11 @@ fun ControlTab(viewModel: BoardViewModel) {
                     val identifyHint = if (hasLed) "Blink the LED fast for 3 s to spot this board" else "Flash the display for 3 s to spot this board"
                     ActionButton(Icons.Rounded.Visibility, "Identify", identifyHint) {
                         viewModel.send(Command.IDENTIFY)
+                    }
+                }
+                if (info?.board?.let(Protocol::pairsInWindow) == true) {
+                    ActionButton(Icons.Rounded.PhonelinkSetup, "Add a phone", "Let another phone pair with this board for 2 minutes") {
+                        viewModel.send(Command.OPEN_PAIRING)
                     }
                 }
                 ActionButton(Icons.Rounded.RestartAlt, "Reboot", "Restart the board; the app reconnects when you ask") {

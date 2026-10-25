@@ -34,13 +34,24 @@ object Protocol {
     val SOIL: UUID = uuid(0x11)      // optional: soil moisture and its calibration (ESP32 Soil) only
     const val OFFSET_MAX_C = 10f
 
-    /** Advertised manufacturer data: company id, then board id and protocol version. */
+    /** Advertised manufacturer data: company id, then board id, protocol version and
+     *  (ESP32 Air) flags: bit 0 = pairing window open. */
     const val ADV_COMPANY_ID = 0x02FF
+    const val ADV_FLAG_PAIRING_OPEN = 1
 
     const val NAME_MAX_BYTES = 20
 
     const val BOARD_ESP32_AIR = "ESP32 Air"
     const val BOARD_ESP32_SOIL = "ESP32 Soil"
+
+    /** How the user opens a board's pairing window (it's open for 2 minutes after). */
+    fun pairingAction(board: String): String = when (board) {
+        BOARD_ESP32_SOIL -> "press its BOOT button"
+        else -> "press its reset button (or unplug and plug it back in)"
+    }
+
+    /** The ESP32 boards: bonded phones only, pairing window, "add a phone". */
+    fun pairsInWindow(board: String): Boolean = board == BOARD_ESP32_AIR || board == BOARD_ESP32_SOIL
 
     fun boardName(id: Int): String = when (id) {
         0x0A -> "BRD4184A"
@@ -160,7 +171,8 @@ enum class Command(val code: Int) {
     FACTORY_RESET(0x02),
     REBOOT(0x03),
     IDENTIFY(0x04),
-    RESET_ORIENTATION(0x05),
+    RESET_ORIENTATION(0x05),   // Thunderboard
+    OPEN_PAIRING(0x06),        // ESP32 Air: let another phone pair for 2 minutes
 }
 
 /** Allowed Config values; the board rejects others (ATT error 0x13). */
@@ -607,6 +619,7 @@ data class CalibrationStatus(
                 2 -> "the room temperature changed during the measurement"
                 3 -> "cancelled"
                 4 -> "the result was out of range"
+                5 -> "the board was reset or lost power while it was off"
                 else -> null
             }
             return CalibrationStatus(offset, auto, state, elapsed, cooldown, warm, now, result, age.takeIf { it != 0xFFFF_FFFFL }, reason)

@@ -70,6 +70,7 @@ typedef enum {
   COMMAND_REBOOT             = 0x03,
   COMMAND_IDENTIFY           = 0x04, // fast LED blink for a few seconds
   COMMAND_RESET_ORIENTATION  = 0x05, // zero roll/pitch/yaw
+  COMMAND_OPEN_PAIRING       = 0x06, // ESP32 Air only: pairing window for 2 min (not used here)
 } command_t;
 
 // Accepted Config values; a write outside them is rejected (ATT error 0x13).

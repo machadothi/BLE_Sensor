@@ -5,7 +5,9 @@ import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,7 +30,9 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.BluetoothDisabled
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Radar
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -36,18 +40,27 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.machadothi.blesensor.ble.KnownBoard
+import com.machadothi.blesensor.ble.Protocol
 import com.machadothi.blesensor.ble.ScannedBoard
 import com.machadothi.blesensor.ui.components.SignalBars
 
 @Composable
 fun ScanScreen(onBoardSelected: (ScannedBoard) -> Unit, viewModel: ScanViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val known by viewModel.knownBoards.collectAsStateWithLifecycle()
+    val knownAddresses = known.map { it.address }.toSet()
+    var hintFor by remember { mutableStateOf<ScannedBoard?>(null) }
+    var forgetting by remember { mutableStateOf<KnownBoard?>(null) }
     val enableBluetooth = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         viewModel.startScan()
     }
@@ -82,8 +95,36 @@ fun ScanScreen(onBoardSelected: (ScannedBoard) -> Unit, viewModel: ScanViewModel
                 }
             } else {
                 LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(state.boards, key = { it.address }) { board ->
-                        BoardRow(board, onClick = { viewModel.stopScan(); onBoardSelected(board) }, modifier = Modifier.animateItem())
+                    if (known.isNotEmpty()) {
+                        item(key = "known-header") { SectionLabel("Your boards") }
+                        items(known, key = { "known-" + it.address }) { k ->
+                            val seen = state.boards.firstOrNull { it.address == k.address }
+                            val board = seen ?: ScannedBoard(k.address, k.name, 0, k.board, 0)
+                            BoardRow(
+                                board,
+                                status = if (seen != null) null else "Paired · tap to connect",
+                                onClick = { viewModel.stopScan(); onBoardSelected(board) },
+                                onLongClick = { forgetting = k },
+                                showSignal = seen != null,
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                        item(key = "scan-header") { SectionLabel("Nearby") }
+                    }
+                    items(state.boards.filter { it.address !in knownAddresses }, key = { it.address }) { board ->
+                        // ESP32 Air takes new phones only while its pairing window is open.
+                        val waiting = board.pairingOpen == false
+                        BoardRow(
+                            board,
+                            status = when (board.pairingOpen) {
+                                true -> "Ready to pair"
+                                false -> if (board.board == Protocol.BOARD_ESP32_SOIL) "Press BOOT to pair" else "Restart the board to pair"
+                                null -> null
+                            },
+                            highlight = board.pairingOpen == true,
+                            onClick = { if (waiting) hintFor = board else { viewModel.stopScan(); onBoardSelected(board) } },
+                            modifier = Modifier.animateItem(),
+                        )
                     }
                 }
             }
@@ -100,14 +141,58 @@ fun ScanScreen(onBoardSelected: (ScannedBoard) -> Unit, viewModel: ScanViewModel
             }
         }
     }
+
+    hintFor?.let { board ->
+        AlertDialog(
+            onDismissRequest = { hintFor = null },
+            title = { Text("Pair ${board.name}") },
+            text = {
+                Text(
+                    "This board takes new phones only in the first 2 minutes after it starts. " +
+                        "To start it, ${Protocol.pairingAction(board.board)}, then tap the board again " +
+                        "when it shows \"Ready to pair\". Android asks to pair: no code needed."
+                )
+            },
+            confirmButton = { TextButton(onClick = { hintFor = null; viewModel.startScan() }) { Text("Scan again") } },
+        )
+    }
+    forgetting?.let { k ->
+        AlertDialog(
+            onDismissRequest = { forgetting = null },
+            title = { Text("Forget ${k.name}?") },
+            text = { Text("This phone forgets the board. To connect again, ${Protocol.pairingAction(k.board)} and pair within 2 minutes.") },
+            confirmButton = { TextButton(onClick = { viewModel.forget(k.address); forgetting = null }) { Text("Forget") } },
+            dismissButton = { TextButton(onClick = { forgetting = null }) { Text("Cancel") } },
+        )
+    }
 }
 
 @Composable
-private fun BoardRow(board: ScannedBoard, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun SectionLabel(text: String) {
+    Text(
+        text.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun BoardRow(
+    board: ScannedBoard,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    status: String? = null,
+    highlight: Boolean = false,
+    showSignal: Boolean = true,
+    onLongClick: (() -> Unit)? = null,
+) {
     Surface(
-        modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick),
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
+        border = if (highlight) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
     ) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
@@ -125,10 +210,19 @@ private fun BoardRow(board: ScannedBoard, onClick: () -> Unit, modifier: Modifie
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                status?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (highlight) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
-            Column(horizontalAlignment = Alignment.End) {
-                SignalBars(board.rssi)
-                Text("${board.rssi} dBm", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (showSignal) {
+                Column(horizontalAlignment = Alignment.End) {
+                    SignalBars(board.rssi)
+                    Text("${board.rssi} dBm", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }

@@ -6,6 +6,7 @@ import com.machadothi.blesensor.ble.AirReading
 import com.machadothi.blesensor.ble.BoardConfig
 import com.machadothi.blesensor.ble.BoardConnection
 import com.machadothi.blesensor.ble.BoardInfo
+import com.machadothi.blesensor.ble.KnownBoards
 import com.machadothi.blesensor.ble.BoardTime
 import com.machadothi.blesensor.ble.WeatherInfo
 import com.machadothi.blesensor.ble.UpdateStatus
@@ -31,6 +32,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import no.nordicsemi.android.ble.observer.ConnectionObserver
 import android.bluetooth.BluetoothDevice
 import javax.inject.Inject
@@ -40,10 +42,13 @@ private const val ENV_HISTORY = 240        // samples kept per environmental cha
 private const val MOTION_HISTORY = 400     // samples kept per motion chart
 private const val HISTORY_PUBLISH_MS = 66L // charts redraw at most ~15 times a second
 private const val RSSI_POLL_MS = 2_000L
+private const val RESTART_DELAY_MS = 12_000L   // before reconnecting after a restart we asked for
+private const val PAIRING_TIMEOUT_MS = 60_000L  // the user answers Android's pairing prompt
 
 @Singleton
 class BoardRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val knownBoards: KnownBoards,
 ) : BoardRepository {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -52,6 +57,7 @@ class BoardRepositoryImpl @Inject constructor(
     private var lastBoard: Pair<String, String>? = null   // address, name
     /** Set before a command that restarts the board: what to say while it's away. */
     @Volatile private var expectedRestart: String? = null
+    @Volatile private var restartDelayMs = RESTART_DELAY_MS
     private var reconnectJob: Job? = null
 
     override val status = MutableStateFlow<ConnectionStatus>(ConnectionStatus.Idle)
@@ -97,9 +103,26 @@ class BoardRepositoryImpl @Inject constructor(
         connection = newConnection
         try {
             newConnection.connectTo(device)
+            // Pairing outside connectTo(): its 15 s timeout is for reaching the
+            // board, not for the user answering Android's "Pair?" prompt.
+            if (newConnection.needsPairing) {
+                status.value = ConnectionStatus.Connecting(name, pairing = true)
+                try {
+                    withTimeout(PAIRING_TIMEOUT_MS) { newConnection.pair() }
+                } catch (e: Exception) {
+                    throw IllegalStateException(
+                        "Couldn't pair. The board takes new phones only in the first 2 minutes after it starts: " +
+                            "press its reset button (BOOT on the soil board) and try again."
+                    )
+                }
+            }
             startSession(newConnection)
             refreshAll(newConnection)
             status.value = ConnectionStatus.Connected(this.name.value ?: name, address)
+            // Bonded (ESP32 Air): list it under "Your boards", connectable without a scan.
+            if (device.bondState == BluetoothDevice.BOND_BONDED) {
+                knownBoards.remember(address, this.name.value ?: name, info.value?.board ?: "Unknown")
+            }
         } catch (e: Exception) {
             newConnection.close()
             connection = null
@@ -304,6 +327,12 @@ class BoardRepositoryImpl @Inject constructor(
 
     override suspend fun controlCalibration(auto: Boolean, command: Int) {
         val conn = requireConnection()
+        if (command == 1) {   // the board switches itself off for the measurement
+            val minutes = (calibration.value?.cooldownS ?: 1200) / 60
+            expectedRestart = "The board is off for $minutes min to measure its self-heating. " +
+                "The app reconnects when it's back…"
+            restartDelayMs = (minutes * 60 + 20) * 1000L
+        }
         val raw = Math.round((calibration.value?.offsetC ?: 0f) * 100)
         conn.write(Protocol.CALIBRATION, byteArrayOf(raw.toByte(), (raw shr 8).toByte(), if (auto) 1 else 0, command.toByte()))
         calibration.value = readCalibration(conn)
@@ -362,8 +391,10 @@ class BoardRepositoryImpl @Inject constructor(
     /** After a restart we asked for: try to reconnect for a while, quietly. */
     private fun reconnectAfterRestart() {
         val (address, name) = lastBoard ?: return
+        val wait = restartDelayMs
+        restartDelayMs = RESTART_DELAY_MS
         reconnectJob = scope.launch {
-            delay(12_000)                     // the board restarts, then checks or downloads
+            delay(wait)                       // the board restarts (and checks, downloads or cools down)
             repeat(8) {
                 open(address, name)
                 if (status.value is ConnectionStatus.Connected) return@launch

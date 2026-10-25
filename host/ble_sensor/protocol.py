@@ -73,6 +73,7 @@ COMMANDS = {
     "reboot": 0x03,
     "identify": 0x04,
     "reset-orientation": 0x05,
+    "open-pairing": 0x06,       # ESP32 Air: let another phone pair for 2 minutes
 }
 
 # Accepted Config values (the board rejects others with ATT error 0x13)
