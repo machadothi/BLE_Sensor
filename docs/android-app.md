@@ -154,7 +154,7 @@ adapts:
     it to **forget** it, which also removes Android's bond.
   - **Thunderboards** don't pair and aren't listed there.
 - **Self-heating measurement.** "Measure now" switches the board off for the
-  cooling time (20 min). The app says so, and reconnects when the board is
+  cooling time (5 min by default). The app says so, and reconnects when the board is
   back.
 - **Update prompt.** When the board has found an update, the app asks once per
   version: *Update to 1.1.0?* with the notes.
